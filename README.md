@@ -10,12 +10,14 @@ momento (para o centro, por exemplo) e devolvê-la depois ao mesmo lugar.
 
 Também cuida das **áreas de trabalho virtuais**: cada área tem seu próprio grid,
 e com um atalho você pula direto para qualquer área (da 1 para a 3, sem passar
-pela 2), vai para a próxima ou a anterior, ou manda a janela focada para outra
-área.
+pela 2), vai para a próxima ou a anterior, manda a janela focada para outra
+área, ou cria e exclui áreas.
 
 É um único executável em Go, sem serviço e sem dependências, que roda em
 segundo plano com um ícone na área de notificação. Um script instala e faz ele
 iniciar com o Windows. Toda a configuração fica num `config.json`.
+
+![minWinM organizando janelas em grid e trocando de área de trabalho pelo teclado](docs/minwinm-demo.gif)
 
 ---
 
@@ -158,11 +160,15 @@ As direções seguem o Vim: **h** = esquerda, **j** = baixo, **k** = cima,
 | `Alt` + `n` / `p` | `desktop-next` / `desktop-prev` | Vai para a próxima / anterior (da última volta para a primeira) |
 | `Alt` + `Shift` + `1` … `9` | `move-to-desktop-1` … `move-to-desktop-9` | Manda a janela focada para a área N; você continua onde está |
 | `Alt` + `Shift` + `n` / `p` | `move-to-desktop-next` / `move-to-desktop-prev` | Manda a janela focada para a próxima / anterior |
+| `Alt` + `Shift` + `d` | `desktop-create` | Cria uma área nova (no fim da lista) e vai para ela |
+| `Alt` + `Shift` + `x` | `desktop-delete` | Exclui a área atual e vai para a anterior (ou a seguinte, se era a primeira); as janelas dela vão junto, para o fim do grid de lá. A única área não é excluída |
 
 A numeração segue a ordem da Visão de Tarefas (`Win+Tab`). Áreas que não
-existem são ignoradas; crie mais com `Win+Ctrl+D`. Depois de trocar de área ou
-mandar uma janela embora, o foco vai para a janela mais ao topo da área atual.
-Os atalhos do próprio Windows (`Win+Ctrl+←/→`) continuam funcionando.
+existem são ignoradas; crie mais com `Alt+Shift+D` (ou `Win+Ctrl+D`). Depois
+de trocar, criar ou excluir uma área, ou de mandar uma janela embora, o foco
+vai para a janela mais ao topo da área atual.
+Os atalhos do próprio Windows (`Win+Ctrl+←/→`, `Win+Ctrl+D`, `Win+Ctrl+F4`)
+continuam funcionando.
 
 ### Redimensionar e espaçamento
 
@@ -318,7 +324,7 @@ obrigatório pelo menos um modificador.
 | Grupo | Ações |
 |---|---|
 | Foco e movimento | `focus-left` `focus-down` `focus-up` `focus-right` · `move-left` `move-down` `move-up` `move-right` · `next-monitor` `prev-monitor` |
-| Áreas de trabalho | `desktop-1` … `desktop-9` `desktop-next` `desktop-prev` · `move-to-desktop-1` … `move-to-desktop-9` `move-to-desktop-next` `move-to-desktop-prev` |
+| Áreas de trabalho | `desktop-1` … `desktop-9` `desktop-next` `desktop-prev` · `move-to-desktop-1` … `move-to-desktop-9` `move-to-desktop-next` `move-to-desktop-prev` · `desktop-create` `desktop-delete` |
 | Tamanho | `grow-width` `shrink-width` `grow-height` `shrink-height` `balance` · `gap-increase` `gap-decrease` |
 | Janela | `toggle-center` `toggle-full-height` `minimize` |
 | Grid | `toggle-tiling` `retile` `quit` |
@@ -357,12 +363,12 @@ de fora:
   janela começaria a cobrir a vizinha. Com muitas janelas num monitor pequeno,
   porém, um app desses ainda pode ultrapassar o seu espaço.
 - **Drivers Intel antigos** usam `Ctrl+Alt+setas` para girar a tela.
-- **Trocar de área de trabalho e mover janelas entre áreas** usam uma API
-  interna do Windows, sem documentação, que a Microsoft muda entre versões. O
-  minWinM traz a versão do **Windows 11 24H2 (build 26100) em diante**. Em
-  outra versão, ou se uma atualização mudar essa API, esses atalhos param de
-  funcionar (sem travar nada); o grid separado por área continua funcionando,
-  porque usa só a parte documentada.
+- **Trocar, criar e excluir áreas de trabalho e mover janelas entre áreas**
+  usam uma API interna do Windows, sem documentação, que a Microsoft muda
+  entre versões. O minWinM traz a versão do **Windows 11 24H2 (build 26100)
+  em diante**. Em outra versão, ou se uma atualização mudar essa API, esses
+  atalhos param de funcionar (sem travar nada); o grid separado por área
+  continua funcionando, porque usa só a parte documentada.
 
 ---
 

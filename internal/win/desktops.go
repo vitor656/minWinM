@@ -13,8 +13,8 @@ import (
 // Áreas de trabalho virtuais.
 //
 // O Windows só documenta IVirtualDesktopManager, que diz em qual área está
-// uma janela (é o que o grid por área usa). Trocar de área e mover janelas
-// de outros processos só existe na API interna do Explorer
+// uma janela (é o que o grid por área usa). Trocar, criar e excluir áreas e
+// mover janelas de outros processos só existe na API interna do Explorer
 // (IVirtualDesktopManagerInternal), cujos GUIDs e vtables mudam entre
 // versões do Windows. Aqui está a versão do Windows 11 24H2 (build 26100) em
 // diante, conferida na build 26300. Se a interface não existir (outra
@@ -47,6 +47,8 @@ const (
 	vdmiGetCurrentDesktop = 6
 	vdmiGetDesktops       = 7
 	vdmiSwitchDesktop     = 9
+	vdmiCreateDesktop     = 11
+	vdmiRemoveDesktop     = 13
 	vdmiFindDesktop       = 14
 
 	// IVirtualDesktop (24H2+)
@@ -210,7 +212,7 @@ func (d *Desktops) findDesktop(id DesktopID) (*comObject, error) {
 	return desk, nil
 }
 
-var errNoInternal = errors.New("trocar/mover entre áreas de trabalho não é suportado nesta versão do Windows")
+var errNoInternal = errors.New("trocar/mover/criar/excluir áreas de trabalho não é suportado nesta versão do Windows")
 
 // Switch vai para a área de trabalho id.
 func (d *Desktops) Switch(id DesktopID) error {
@@ -228,6 +230,60 @@ func (d *Desktops) Switch(id DesktopID) error {
 		defer desk.release()
 		if hr := d.internal.call(vdmiSwitchDesktop, desk.ptr()); failed(hr) {
 			return hrError("SwitchDesktop", hr)
+		}
+		return nil
+	})
+}
+
+// Create cria uma área de trabalho (no fim da lista) e devolve o id dela.
+// Não troca para a nova área.
+func (d *Desktops) Create() (DesktopID, error) {
+	if !d.Available() {
+		return DesktopID{}, errNoInternal
+	}
+	var id DesktopID
+	err := d.retry(func() error {
+		if !d.Available() {
+			return errNoInternal
+		}
+		var desk *comObject
+		if hr := d.internal.call(vdmiCreateDesktop, uintptr(unsafe.Pointer(&desk))); failed(hr) || desk == nil {
+			return hrError("CreateDesktop", hr)
+		}
+		var ok bool
+		if id, ok = desktopID(desk); !ok {
+			return errors.New("IVirtualDesktop.GetId falhou")
+		}
+		return nil
+	})
+	return id, err
+}
+
+// Remove exclui a área id; as janelas dela vão para a área fallback (que
+// precisa ser outra).
+func (d *Desktops) Remove(id, fallback DesktopID) error {
+	if !d.Available() {
+		return errNoInternal
+	}
+	if id == fallback {
+		return errors.New("Remove: a área de destino das janelas é a própria área excluída")
+	}
+	return d.retry(func() error {
+		if !d.Available() {
+			return errNoInternal
+		}
+		desk, err := d.findDesktop(id)
+		if err != nil {
+			return err
+		}
+		defer desk.release()
+		to, err := d.findDesktop(fallback)
+		if err != nil {
+			return err
+		}
+		defer to.release()
+		if hr := d.internal.call(vdmiRemoveDesktop, desk.ptr(), to.ptr()); failed(hr) {
+			return hrError("RemoveDesktop", hr)
 		}
 		return nil
 	})

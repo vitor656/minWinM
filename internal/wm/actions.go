@@ -75,8 +75,8 @@ func buildActions() map[string]Action {
 		acts["move-"+name] = Action{run: onFocused(func(m *Manager, h uintptr) { m.move(h, d) })}
 	}
 
-	// Áreas de trabalho virtuais: desktop-1..9, move-to-desktop-1..9, e as
-	// vizinhas (next/prev dão a volta nas pontas).
+	// Áreas de trabalho virtuais: desktop-1..9, move-to-desktop-1..9, as
+	// vizinhas (next/prev dão a volta nas pontas), criar e excluir.
 	for n := 1; n <= maxDesktopShortcut; n++ {
 		acts[fmt.Sprintf("desktop-%d", n)] = Action{run: func(m *Manager) { m.gotoDesktop(n, 0) }}
 		acts[fmt.Sprintf("move-to-desktop-%d", n)] = Action{run: onFocused(func(m *Manager, h uintptr) { m.sendToDesktop(h, n, 0) })}
@@ -85,6 +85,8 @@ func buildActions() map[string]Action {
 	acts["desktop-prev"] = Action{run: func(m *Manager) { m.gotoDesktop(0, -1) }}
 	acts["move-to-desktop-next"] = Action{run: onFocused(func(m *Manager, h uintptr) { m.sendToDesktop(h, 0, +1) })}
 	acts["move-to-desktop-prev"] = Action{run: onFocused(func(m *Manager, h uintptr) { m.sendToDesktop(h, 0, -1) })}
+	acts["desktop-create"] = Action{run: (*Manager).createDesktop}
+	acts["desktop-delete"] = Action{run: (*Manager).deleteDesktop}
 
 	// Presets: o nome da ação é o nome do preset.
 	for _, name := range grid.PresetNames() {

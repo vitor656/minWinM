@@ -3,6 +3,7 @@
 package win
 
 import (
+	"os"
 	"testing"
 	"unsafe"
 
@@ -119,4 +120,39 @@ func TestDesktopsNoOp(t *testing.T) {
 		return
 	}
 	t.Skip("nenhuma janela adequada para o teste de MoveWindow")
+}
+
+// Cria uma área vazia e a exclui logo em seguida, sem sair da atual. Mexe
+// nas áreas do usuário, por isso só roda com MINWINM_TEST_DESKTOP_WRITE=1.
+func TestDesktopsCreateRemove(t *testing.T) {
+	if os.Getenv("MINWINM_TEST_DESKTOP_WRITE") != "1" {
+		t.Skip("defina MINWINM_TEST_DESKTOP_WRITE=1 para criar/excluir uma área de teste")
+	}
+	d := OpenDesktops()
+	defer d.release()
+	if !d.Available() {
+		t.Skip("API interna de áreas de trabalho indisponível nesta versão do Windows")
+	}
+	cur, ok := d.Current()
+	if !ok {
+		t.Fatal("Current falhou")
+	}
+	before := len(d.List())
+	id, err := d.Create()
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	list := d.List()
+	if len(list) != before+1 || list[len(list)-1] != id {
+		t.Errorf("área criada %v não está no fim da lista %v", id, list)
+	}
+	if now, _ := d.Current(); now != cur {
+		t.Errorf("Create trocou de área: %v -> %v", cur, now)
+	}
+	if err := d.Remove(id, cur); err != nil {
+		t.Fatalf("Remove: %v (a área de teste %v ficou; exclua-a à mão)", err, id)
+	}
+	if containsDesktop(d.List(), id) {
+		t.Errorf("área %v continua na lista depois de Remove", id)
+	}
 }

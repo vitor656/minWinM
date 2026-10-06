@@ -52,6 +52,8 @@
     "alt+shift+9": "move-to-desktop-9",
     "alt+shift+n": "move-to-desktop-next",
     "alt+shift+p": "move-to-desktop-prev",
+    "alt+shift+d": "desktop-create",
+    "alt+shift+x": "desktop-delete",
 
     "ctrl+alt+left": "left",
     "ctrl+alt+right": "right",

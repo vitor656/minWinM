@@ -19,6 +19,7 @@ var wantActions = []string{
 	"move-to-desktop-1", "move-to-desktop-2", "move-to-desktop-3", "move-to-desktop-4",
 	"move-to-desktop-5", "move-to-desktop-6", "move-to-desktop-7", "move-to-desktop-8",
 	"move-to-desktop-9", "move-to-desktop-next", "move-to-desktop-prev",
+	"desktop-create", "desktop-delete",
 	"quit", "next-monitor", "prev-monitor",
 	"toggle-tiling", "retile", "balance", "toggle-center", "minimize", "toggle-full-height",
 	"grow-width", "shrink-width", "grow-height", "shrink-height",
@@ -129,5 +130,30 @@ func TestPickDesktop(t *testing.T) {
 	}
 	if _, ok := pickDesktop(list[:1], d(1), 0, +1); ok {
 		t.Error("com uma área só, próxima/anterior não deveria fazer nada")
+	}
+}
+
+func TestFallbackDesktop(t *testing.T) {
+	d := func(b byte) win.DesktopID { return win.DesktopID{Data1: uint32(b)} }
+	list := []win.DesktopID{d(1), d(2), d(3)}
+	cases := []struct {
+		name string
+		cur  win.DesktopID
+		want win.DesktopID
+		ok   bool
+	}{
+		{"do meio vai para a anterior", d(2), d(1), true},
+		{"a última vai para a anterior", d(3), d(2), true},
+		{"a primeira vai para a seguinte", d(1), d(2), true},
+		{"área desconhecida", d(9), win.DesktopID{}, false},
+	}
+	for _, c := range cases {
+		got, ok := fallbackDesktop(list, c.cur)
+		if got != c.want || ok != c.ok {
+			t.Errorf("%s: = %v, %v; want %v, %v", c.name, got, ok, c.want, c.ok)
+		}
+	}
+	if _, ok := fallbackDesktop(list[:1], d(1)); ok {
+		t.Error("não deveria excluir a única área")
 	}
 }

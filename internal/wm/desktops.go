@@ -2,10 +2,14 @@
 
 package wm
 
-import "minwinm/internal/win"
+import (
+	"slices"
 
-// Áreas de trabalho virtuais: ir para uma área e mandar a janela focada para
-// outra. Cada área tem seu próprio grid por monitor (ver Manager.spaces), então
+	"minwinm/internal/win"
+)
+
+// Áreas de trabalho virtuais: ir para uma área, mandar a janela focada para
+// outra, criar e excluir áreas. Cada área tem seu próprio grid por monitor (ver Manager.spaces), então
 // trocar de área não mexe nas proporções guardadas das outras.
 
 // desktopTarget escolhe a área de destino: n ≥ 1 é a área n (1 = primeira
@@ -14,7 +18,7 @@ import "minwinm/internal/win"
 func (m *Manager) desktopTarget(n, step int) (win.DesktopID, bool) {
 	list := m.vd.List()
 	if n > len(list) {
-		m.logf("área de trabalho %d não existe (há %d); crie mais com Win+Ctrl+D", n, len(list))
+		m.logf("área de trabalho %d não existe (há %d); crie mais com desktop-create ou Win+Ctrl+D", n, len(list))
 	}
 	return pickDesktop(list, m.desk, n, step)
 }
@@ -77,6 +81,78 @@ func (m *Manager) sendToDesktop(hwnd uintptr, n, step int) {
 		m.layout(ws)
 	}
 	m.focusTop()
+}
+
+// createDesktop cria uma área de trabalho no fim da lista e vai para ela,
+// como o Win+Ctrl+D.
+func (m *Manager) createDesktop() {
+	id, err := m.vd.Create()
+	if err != nil {
+		m.logf("áreas de trabalho: %v", err)
+		return
+	}
+	if err := m.vd.Switch(id); err != nil {
+		m.logf("áreas de trabalho: %v", err)
+		return
+	}
+	m.desk = id
+	m.focusTop()
+}
+
+// deleteDesktop exclui a área atual, como o Win+Ctrl+F4: vai para a vizinha
+// (ver fallbackDesktop) e as janelas da área excluída entram no fim do grid
+// do mesmo monitor de lá, na mesma ordem.
+func (m *Manager) deleteDesktop() {
+	m.refreshDesktop()
+	gone := m.desk
+	to, ok := fallbackDesktop(m.vd.List(), gone)
+	if !ok {
+		m.logf("áreas de trabalho: não dá para excluir a única área")
+		return
+	}
+	// Troca antes de excluir para a área atual ser sempre conhecida.
+	if err := m.vd.Switch(to); err != nil {
+		m.logf("áreas de trabalho: %v", err)
+		return
+	}
+	m.desk = to
+	if err := m.vd.Remove(gone, to); err != nil {
+		m.logf("áreas de trabalho: %v", err)
+		m.focusTop()
+		return
+	}
+	var orphans []*workspace
+	m.spaces = slices.DeleteFunc(m.spaces, func(ws *workspace) bool {
+		if ws.desk == gone {
+			orphans = append(orphans, ws)
+			return true
+		}
+		return false
+	})
+	for _, ws := range orphans {
+		target := m.spaceFor(ws.mon, to)
+		target.tiles = append(target.tiles, ws.tiles...)
+	}
+	m.layoutAll()
+	m.focusTop()
+}
+
+// fallbackDesktop escolhe para onde ir ao excluir a área cur: a anterior,
+// ou a seguinte se cur é a primeira (mesma regra do Windows). Falha se só
+// existe uma área.
+func fallbackDesktop(list []win.DesktopID, cur win.DesktopID) (win.DesktopID, bool) {
+	if len(list) < 2 {
+		return win.DesktopID{}, false
+	}
+	for i, id := range list {
+		if id == cur {
+			if i == 0 {
+				return list[1], true
+			}
+			return list[i-1], true
+		}
+	}
+	return win.DesktopID{}, false
 }
 
 // focusTop foca a janela mais ao topo da área atual (se houver).
