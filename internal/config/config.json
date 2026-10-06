@@ -1,0 +1,80 @@
+{
+  "gap": 0,
+  "tiling": true,
+  "resize_step": 0.05,
+  "ignore": ["Taskmgr.exe"],
+  "tray_icon": true,
+  "bindings": {
+    "alt+h": "focus-left",
+    "alt+j": "focus-down",
+    "alt+k": "focus-up",
+    "alt+l": "focus-right",
+
+    "alt+shift+h": "move-left",
+    "alt+shift+j": "move-down",
+    "alt+shift+k": "move-up",
+    "alt+shift+l": "move-right",
+
+    "ctrl+alt+h": "shrink-width",
+    "ctrl+alt+l": "grow-width",
+    "ctrl+alt+j": "shrink-height",
+    "ctrl+alt+k": "grow-height",
+    "ctrl+alt+b": "balance",
+
+    "alt+shift+c": "toggle-center",
+    "alt+shift+f": "toggle-full-height",
+    "alt+shift+m": "minimize",
+    "alt+shift+t": "toggle-tiling",
+    "alt+shift+r": "retile",
+    "alt+shift+=": "gap-increase",
+    "alt+shift+-": "gap-decrease",
+
+    "alt+1": "desktop-1",
+    "alt+2": "desktop-2",
+    "alt+3": "desktop-3",
+    "alt+4": "desktop-4",
+    "alt+5": "desktop-5",
+    "alt+6": "desktop-6",
+    "alt+7": "desktop-7",
+    "alt+8": "desktop-8",
+    "alt+9": "desktop-9",
+    "alt+n": "desktop-next",
+    "alt+p": "desktop-prev",
+
+    "alt+shift+1": "move-to-desktop-1",
+    "alt+shift+2": "move-to-desktop-2",
+    "alt+shift+3": "move-to-desktop-3",
+    "alt+shift+4": "move-to-desktop-4",
+    "alt+shift+5": "move-to-desktop-5",
+    "alt+shift+6": "move-to-desktop-6",
+    "alt+shift+7": "move-to-desktop-7",
+    "alt+shift+8": "move-to-desktop-8",
+    "alt+shift+9": "move-to-desktop-9",
+    "alt+shift+n": "move-to-desktop-next",
+    "alt+shift+p": "move-to-desktop-prev",
+
+    "ctrl+alt+left": "left",
+    "ctrl+alt+right": "right",
+    "ctrl+alt+up": "top",
+    "ctrl+alt+down": "bottom",
+
+    "ctrl+alt+shift+u": "top-left",
+    "ctrl+alt+shift+i": "top-right",
+    "ctrl+alt+shift+j": "bottom-left",
+    "ctrl+alt+shift+k": "bottom-right",
+
+    "ctrl+alt+d": "left-third",
+    "ctrl+alt+f": "center-third",
+    "ctrl+alt+g": "right-third",
+    "ctrl+alt+e": "left-two-thirds",
+    "ctrl+alt+t": "right-two-thirds",
+
+    "ctrl+alt+enter": "maximize",
+    "ctrl+alt+c": "center",
+
+    "ctrl+alt+shift+right": "next-monitor",
+    "ctrl+alt+shift+left": "prev-monitor",
+
+    "ctrl+alt+q": "quit"
+  }
+}
