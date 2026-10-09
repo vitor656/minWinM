@@ -3,8 +3,9 @@
 package main
 
 import (
-	"fmt"
+	"os"
 
+	"minwinm/internal/applog"
 	"minwinm/internal/icon"
 	"minwinm/internal/win"
 	"minwinm/internal/wm"
@@ -24,15 +25,17 @@ type trayUI struct {
 const (
 	menuToggle = iota + 1
 	menuRetile
+	menuLog
+	menuOpenLog
 	menuQuit
 )
 
 // startTray cria o ícone. Se falhar, o programa segue sem ícone.
 func startTray(m *wm.Manager) *trayUI {
 	u := &trayUI{m: m}
-	tray, err := win.NewTray(u.openMenu)
+	tray, err := win.NewTray(func() { applog.Guard("menu do ícone", u.openMenu) })
 	if err != nil {
-		fmt.Println("ícone da área de notificação indisponível:", err)
+		applog.Errorf("ícone da área de notificação indisponível: %v", err)
 		return nil
 	}
 	size := win.SmallIconSize()
@@ -62,6 +65,9 @@ func (u *trayUI) openMenu() {
 		{ID: menuToggle, Text: "Tiling automático", Checked: enabled},
 		{ID: menuRetile, Text: "Reorganizar agora", Disabled: !enabled},
 		{Separator: true},
+		{ID: menuLog, Text: "Log detalhado", Checked: applog.Verbose()},
+		{ID: menuOpenLog, Text: "Abrir log", Disabled: !logExists()},
+		{Separator: true},
 		{ID: menuQuit, Text: "Sair"},
 	})
 	switch choice {
@@ -69,10 +75,29 @@ func (u *trayUI) openMenu() {
 		u.run("toggle-tiling")
 	case menuRetile:
 		u.run("retile")
+	case menuLog:
+		applog.SetVerbose(!applog.Verbose())
+		if applog.Verbose() {
+			u.m.LogState()
+		}
+	case menuOpenLog:
+		if err := win.OpenFile(applog.Path()); err != nil {
+			applog.Errorf("abrir o log: %v", err)
+		}
 	case menuQuit:
 		win.PostQuit()
 	}
 	u.refresh()
+}
+
+// logExists diz se o arquivo de log já foi criado.
+func logExists() bool {
+	p := applog.Path()
+	if p == "" {
+		return false
+	}
+	_, err := os.Stat(p)
+	return err == nil
 }
 
 func (u *trayUI) run(action string) {

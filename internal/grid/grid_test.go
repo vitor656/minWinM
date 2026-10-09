@@ -225,3 +225,57 @@ func equalFloats(a, b []float64) bool {
 	}
 	return true
 }
+
+func TestSoloColumn(t *testing.T) {
+	cases := []struct {
+		shape     []int
+		slot      int
+		wantShape []int
+		wantOrder []int
+		ok        bool
+	}{
+		// 2x2, foco em A (topo da esquerda): B vai para o topo da direita.
+		{[]int{2, 2}, 0, []int{1, 3}, []int{0, 1, 2, 3}, true},
+		// 2x2, foco em B: A vai para a direita, B fica na esquerda.
+		{[]int{2, 2}, 1, []int{1, 3}, []int{1, 0, 2, 3}, true},
+		// Última coluna: as outras vão para o pé da coluna da esquerda.
+		{[]int{1, 2}, 2, []int{2, 1}, []int{0, 1, 2}, true},
+		{[]int{2, 2, 3}, 5, []int{2, 4, 1}, []int{0, 1, 2, 3, 4, 6, 5}, true},
+		// Já sozinha, coluna única ou slot inexistente: nada.
+		{[]int{1, 2}, 0, nil, nil, false},
+		{[]int{3}, 0, nil, nil, false},
+		{[]int{2, 2}, 9, nil, nil, false},
+	}
+	for _, c := range cases {
+		shape, order, ok := SoloColumn(c.shape, c.slot)
+		if ok != c.ok || !equalInts(shape, c.wantShape) || !equalInts(order, c.wantOrder) {
+			t.Errorf("SoloColumn(%v, %d) = %v %v %v, want %v %v %v",
+				c.shape, c.slot, shape, order, ok, c.wantShape, c.wantOrder, c.ok)
+		}
+	}
+}
+
+func TestSetShapeLastsWhileCountSame(t *testing.T) {
+	var l Layout
+	l.Fit(4)
+	l.Grow(0, true, 0.1)
+	cols := append([]float64(nil), l.colW...)
+	l.SetShape([]int{1, 3})
+	if !equalFloats(l.colW, cols) {
+		t.Fatalf("SetShape com o mesmo número de colunas mudou as larguras: %v", l.colW)
+	}
+	l.Fit(4)
+	if !l.Custom() || !equalInts(l.Shape(), []int{1, 3}) {
+		t.Fatalf("Fit com o mesmo número desfez o formato fixado: %v", l.Shape())
+	}
+	l.Fit(5)
+	if l.Custom() || !equalInts(l.Shape(), Shape(5)) {
+		t.Fatalf("Fit com outro número manteve o formato fixado: %v", l.Shape())
+	}
+	l.SetShape([]int{1, 3})
+	l.ClearShape()
+	l.Fit(4)
+	if l.Custom() || !equalInts(l.Shape(), Shape(4)) {
+		t.Fatalf("ClearShape não voltou ao automático: %v", l.Shape())
+	}
+}

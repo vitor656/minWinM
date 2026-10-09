@@ -17,9 +17,11 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"runtime"
 	"sort"
 
+	"minwinm/internal/applog"
 	"minwinm/internal/config"
 	"minwinm/internal/win"
 	"minwinm/internal/wm"
@@ -37,13 +39,19 @@ func main() {
 		fatal("O minWinM já está rodando.\n\nPara fechar, use o atalho 'quit' (padrão Ctrl+Alt+Q).")
 	}
 
+	applog.Init(logPath())
+	defer applog.Close()
+
 	win.EnablePerMonitorDPI()
 
 	cfg, src, err := config.Load(*cfgPath)
 	if err != nil {
 		fatal(fmt.Sprintf("Erro ao ler a configuração (%s):\n\n%v", src, err))
 	}
-	fmt.Println("config:", src)
+	if cfg.LogVerbose {
+		applog.SetVerbose(true)
+	}
+	applog.Printf("minWinM iniciando: Windows build %d, config %s", win.OSBuild(), src)
 
 	bindings := registerBindings(cfg.Bindings)
 	if len(bindings) == 0 {
@@ -53,13 +61,16 @@ func main() {
 
 	m := wm.New(cfg)
 	m.Start()
+	if applog.Verbose() {
+		m.LogState()
+	}
 
 	var tray *trayUI
 	if cfg.TrayIcon == nil || *cfg.TrayIcon {
 		tray = startTray(m)
 		defer tray.close()
 	}
-	fmt.Printf("rodando (tiling %s); Ctrl+C ou o atalho '%s' para sair\n",
+	applog.Printf("rodando (tiling %s); Ctrl+C ou o atalho '%s' para sair",
 		map[bool]string{true: "ligado", false: "desligado"}[m.Enabled()], wm.Quit)
 
 	// Atalhos e timers chegam como mensagens da thread (hwnd 0); as da
@@ -70,7 +81,7 @@ func main() {
 		case msg.Hwnd != 0:
 			win.DispatchMessage(&msg)
 		case msg.Message == win.WMTimer:
-			m.OnTimer(msg.WParam)
+			applog.Guard("re-tile", func() { m.OnTimer(msg.WParam) })
 		case msg.Message == win.WMHotkey:
 			b := bindings[int(msg.WParam)]
 			if b.name == wm.Quit {
@@ -80,7 +91,10 @@ func main() {
 			if msg.LParam&(config.ModAlt|config.ModWin) != 0 {
 				win.MaskModifierRelease()
 			}
-			m.Run(b.action)
+			applog.Guard("atalho "+b.name, func() {
+				applog.Printf("atalho: %s", b.name)
+				m.Run(b.action)
+			})
 			tray.refresh() // o atalho pode ter ligado/desligado o tiling
 		}
 	}
@@ -89,9 +103,20 @@ func main() {
 // fatal avisa o erro e encerra. Usa uma caixa de mensagem porque, rodando
 // em segundo plano (sem console), o stderr não aparece para ninguém.
 func fatal(text string) {
-	fmt.Fprintln(os.Stderr, "erro:", text)
+	applog.Errorf("%s", text)
+	applog.Close()
 	win.ErrorBox("minWinM", text)
 	os.Exit(1)
+}
+
+// logPath é o minWinM.log ao lado do executável (junto do config.json da
+// instalação). Vazio, se não der para saber onde está o executável.
+func logPath() string {
+	exe, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(filepath.Dir(exe), "minWinM.log")
 }
 
 type binding struct {
@@ -115,20 +140,20 @@ func registerBindings(keys map[string]string) map[int]binding {
 		name := keys[k]
 		action, ok := wm.Lookup(name)
 		if !ok {
-			fmt.Printf("  ignorado  %-24s ação desconhecida %q\n", k, name)
+			applog.Errorf("atalho ignorado: %s: ação desconhecida %q", k, name)
 			continue
 		}
 		mods, vk, err := config.ParseBinding(k)
 		if err != nil {
-			fmt.Printf("  ignorado  %-24s %v\n", k, err)
+			applog.Errorf("atalho ignorado: %s: %v", k, err)
 			continue
 		}
 		if err := win.RegisterHotKey(nextID, mods, vk, action.Repeat); err != nil {
-			fmt.Printf("  falhou    %-24s %v (já em uso por outro programa?)\n", k, err)
+			applog.Errorf("atalho falhou: %s: %v (já em uso por outro programa?)", k, err)
 			continue
 		}
 		out[nextID] = binding{name: name, action: action}
-		fmt.Printf("  ok        %-24s -> %s\n", k, name)
+		applog.Printf("  ok        %-24s -> %s", k, name)
 		nextID++
 	}
 	return out

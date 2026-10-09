@@ -24,10 +24,14 @@ func shouldManage(hwnd uintptr) bool {
 // isAppWindow aproxima o critério do Alt+Tab: janela de topo visível, sem
 // dono, com título e que não seja de ferramenta. Define os candidatos a foco.
 func isAppWindow(hwnd uintptr) bool {
+	// Janelas-filhas primeiro: são a maioria dos eventos e o teste é o mais barato.
+	if hwnd == 0 || win.Style(hwnd)&win.StyleChild != 0 {
+		return false
+	}
 	if !shouldManage(hwnd) || !win.IsVisible(hwnd) || win.IsIconic(hwnd) || win.IsCloaked(hwnd) {
 		return false
 	}
-	if win.HasOwner(hwnd) || win.Style(hwnd)&win.StyleChild != 0 {
+	if win.HasOwner(hwnd) {
 		return false
 	}
 	if win.ExStyle(hwnd)&(win.ExToolWindow|win.ExNoActivate) != 0 {

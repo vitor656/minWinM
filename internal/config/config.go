@@ -23,6 +23,7 @@ type Config struct {
 	ResizeStep float64           `json:"resize_step"` // fração da tela por grow/shrink (padrão 0.05)
 	Ignore     []string          `json:"ignore"`      // executáveis ou classes de janela fora do grid
 	TrayIcon   *bool             `json:"tray_icon"`   // ícone na área de notificação (padrão true)
+	LogVerbose bool              `json:"log_verbose"` // log detalhado no minWinM.log desde o início
 	Bindings   map[string]string `json:"bindings"`    // "atalho": "ação"
 }
 

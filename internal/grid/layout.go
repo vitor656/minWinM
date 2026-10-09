@@ -23,25 +23,97 @@ func Shape(n int) []int {
 	return shape
 }
 
+// SoloColumn deixa o slot sozinho na coluna dele e passa as outras janelas
+// da coluna para a coluna vizinha (a da direita; na última coluna, a da
+// esquerda), empilhadas junto com as que já estavam lá. Devolve o novo
+// formato e a nova ordem: order[i] é o slot antigo que vai para o slot i.
+// ok é false se não há o que fazer (slot já sozinho ou sem vizinha).
+func SoloColumn(shape []int, slot int) (newShape, order []int, ok bool) {
+	// cols[c] = slots antigos da coluna c, de cima para baixo.
+	cols := make([][]int, len(shape))
+	s := 0
+	c := -1
+	for i, n := range shape {
+		for r := 0; r < n; r++ {
+			if s == slot {
+				c = i
+			}
+			cols[i] = append(cols[i], s)
+			s++
+		}
+	}
+	if c < 0 || len(cols[c]) < 2 || len(shape) < 2 {
+		return nil, nil, false
+	}
+	var rest []int
+	for _, o := range cols[c] {
+		if o != slot {
+			rest = append(rest, o)
+		}
+	}
+	cols[c] = []int{slot}
+	// As que saem ficam do lado de onde vieram: no topo da coluna da
+	// direita, no pé da coluna da esquerda.
+	if t := c + 1; t < len(cols) {
+		cols[t] = append(rest, cols[t]...)
+	} else {
+		cols[c-1] = append(cols[c-1], rest...)
+	}
+	for _, col := range cols {
+		newShape = append(newShape, len(col))
+		order = append(order, col...)
+	}
+	return newShape, order, true
+}
+
 // Layout é o grid de um monitor: quantas janelas há em cada coluna e as
 // proporções das colunas e das linhas de cada coluna (cada lista soma 1).
 //
 // Os slots são numerados coluna a coluna, de cima para baixo. As
 // proporções pertencem aos slots e voltam a ser iguais quando o formato do
 // grid muda (uma janela entra ou sai). O valor zero é um grid vazio.
+//
+// O formato normalmente é Shape(n); SetShape fixa outro até o número de
+// janelas mudar.
 type Layout struct {
-	shape []int
-	colW  []float64
-	rowW  [][]float64
+	shape  []int
+	colW   []float64
+	rowW   [][]float64
+	custom bool // formato fixado por SetShape
 }
 
 // Fit ajusta o grid para n janelas; se o formato mudar, zera as proporções.
+// Um formato fixado vale enquanto continuar sendo para n janelas.
 func (l *Layout) Fit(n int) {
+	if l.custom && sum(l.shape) == n {
+		return
+	}
+	l.custom = false
 	if shape := Shape(n); !equalInts(shape, l.shape) {
 		l.shape = shape
 		l.Reset()
 	}
 }
+
+// SetShape fixa o formato (janelas por coluna). Mantém as larguras das
+// colunas se o número delas não mudou; as linhas ficam iguais.
+func (l *Layout) SetShape(shape []int) {
+	keepCols := len(shape) == len(l.colW)
+	l.shape, l.custom = append([]int(nil), shape...), true
+	if !keepCols {
+		l.colW = equalParts(len(shape))
+	}
+	l.rowW = make([][]float64, len(shape))
+	for c, n := range shape {
+		l.rowW[c] = equalParts(n)
+	}
+}
+
+// ClearShape volta ao formato automático no próximo Fit.
+func (l *Layout) ClearShape() { l.shape, l.custom = nil, false }
+
+// Custom diz se o formato atual foi fixado por SetShape.
+func (l *Layout) Custom() bool { return l.custom }
 
 // Shape devolve uma cópia do formato atual (janelas por coluna).
 func (l *Layout) Shape() []int { return append([]int(nil), l.shape...) }
@@ -216,6 +288,14 @@ func equalParts(n int) []float64 {
 		p[i] = 1 / float64(n)
 	}
 	return p
+}
+
+func sum(a []int) int {
+	t := 0
+	for _, v := range a {
+		t += v
+	}
+	return t
 }
 
 func equalInts(a, b []int) bool {

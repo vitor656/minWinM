@@ -160,9 +160,15 @@ func Place(hwnd uintptr, target grid.Rect) {
 	x, y := target.Left-l, target.Top-t
 	w, h := target.W()+l+r, target.H()+t+b
 
-	// Duas chamadas: ao cruzar monitores com DPI diferente, o Windows
-	// reescala a janela depois da primeira.
-	for i := 0; i < 2; i++ {
+	pSetWindowPos.Call(hwnd, 0, uintptr(x), uintptr(y), uintptr(w), uintptr(h),
+		swpNoZOrder|swpNoActivate)
+	// Ao cruzar monitores com DPI diferente, o Windows reescala a janela
+	// depois da primeira chamada; só então é preciso repetir.
+	got, ok := FrameBounds(hwnd)
+	if !ok {
+		got, ok = WindowRect(hwnd)
+	}
+	if ok && got != target {
 		pSetWindowPos.Call(hwnd, 0, uintptr(x), uintptr(y), uintptr(w), uintptr(h),
 			swpNoZOrder|swpNoActivate)
 	}

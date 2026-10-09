@@ -21,6 +21,7 @@ import (
 	"sort"
 	"strings"
 
+	"minwinm/internal/applog"
 	"minwinm/internal/config"
 	"minwinm/internal/grid"
 	"minwinm/internal/win"
@@ -84,9 +85,11 @@ func New(cfg config.Config) *Manager {
 func (m *Manager) Start() {
 	m.vd = win.OpenDesktops()
 	if !m.vd.Available() {
-		m.logf("áreas de trabalho: só o grid por área funciona; trocar/mover não é suportado nesta versão do Windows")
+		m.errorf("áreas de trabalho: só o grid por área funciona; trocar/mover não é suportado nesta versão do Windows (build %d)", win.OSBuild())
 	}
-	win.InstallEventHooks(m.OnEvent)
+	win.InstallEventHooks(func(event uint32, hwnd uintptr) {
+		applog.Guard("evento de janela", func() { m.OnEvent(event, hwnd) })
+	})
 	if m.enabled {
 		m.retile()
 	}
@@ -175,6 +178,8 @@ func (m *Manager) sync() {
 	for _, ws := range m.spaces {
 		if monitors[ws.mon] && (len(desks) == 0 || desks[ws.desk] || ws.desk == m.desk) {
 			kept = append(kept, ws)
+		} else {
+			m.logf("grid removido (monitor %#x ou área %v não existe mais), %d janelas", ws.mon, ws.desk, len(ws.tiles))
 		}
 	}
 	m.spaces = kept
@@ -184,6 +189,8 @@ func (m *Manager) sync() {
 		for _, tl := range ws.tiles {
 			if win.IsWindow(tl.hwnd) && win.IsVisible(tl.hwnd) {
 				alive = append(alive, tl)
+			} else {
+				m.logf("saiu do grid: %s", tl.name())
 			}
 		}
 		ws.tiles = alive
@@ -227,7 +234,12 @@ func (m *Manager) sync() {
 			return a.Top < b.Top
 		})
 		for _, h := range hs {
-			ws.tiles = append(ws.tiles, &tile{hwnd: h})
+			tl := &tile{hwnd: h}
+			if applog.Verbose() {
+				tl.desc = describe(h)
+				m.logf("entrou no grid: %s (monitor %#x)", tl.desc, ws.mon)
+			}
+			ws.tiles = append(ws.tiles, tl)
 		}
 	}
 }
@@ -276,6 +288,7 @@ func (m *Manager) applySizes(ws *workspace, mon win.Monitor, before, target grid
 			return
 		}
 	}
+	m.logf("redimensionar: alguma janela não encolhe tanto (tamanho mínimo do app); mantido como estava")
 	ws.Restore(before)
 	m.layout(ws)
 }
@@ -287,4 +300,51 @@ func onOff(b bool) string {
 	return "desligado"
 }
 
-func (m *Manager) logf(format string, args ...any) { fmt.Printf(format+"\n", args...) }
+// logf registra um detalhe (no arquivo, só com o log detalhado ligado);
+// errorf, uma falha (sempre no arquivo).
+func (m *Manager) logf(format string, args ...any)   { applog.Printf(format, args...) }
+func (m *Manager) errorf(format string, args ...any) { applog.Errorf(format, args...) }
+
+// describe identifica uma janela no log: handle, executável e classe. Não
+// usa o título, que pode ter dados do usuário (nome de documento, e-mail...).
+func describe(hwnd uintptr) string {
+	return fmt.Sprintf("%#x %s [%s]", hwnd, win.ProcessName(hwnd), win.ClassName(hwnd))
+}
+
+// name identifica o tile no log mesmo depois que a janela fechou.
+func (tl *tile) name() string {
+	if tl.desc == "" {
+		return fmt.Sprintf("%#x", tl.hwnd)
+	}
+	return tl.desc
+}
+
+// LogState registra o estado atual (monitores e janelas de cada grid): o
+// retrato inicial quando o log detalhado é ligado.
+func (m *Manager) LogState() {
+	m.logf("estado: tiling %s, gap %d/%d, trocar/mover áreas de trabalho: %s",
+		onOff(m.enabled), m.gaps.Inner, m.gaps.Outer, onOff(m.vd != nil && m.vd.Available()))
+	for _, mon := range win.Monitors() {
+		m.logf("  monitor %#x: tela %v, área útil %v", mon.Handle, mon.Full, mon.Work)
+	}
+	for _, ws := range m.spaces {
+		cur := ""
+		if ws.desk == m.desk {
+			cur = " (atual)"
+		}
+		m.logf("  grid do monitor %#x, área %v%s: formato %v", ws.mon, ws.desk, cur, ws.Shape())
+		for _, tl := range ws.tiles {
+			var flags []string
+			if tl.floating {
+				flags = append(flags, "flutuante:"+tl.preset)
+			}
+			if tl.tall {
+				flags = append(flags, "altura-total")
+			}
+			if win.IsIconic(tl.hwnd) {
+				flags = append(flags, "minimizada")
+			}
+			m.logf("    %s %v", describe(tl.hwnd), flags)
+		}
+	}
+}

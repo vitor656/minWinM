@@ -30,6 +30,7 @@ iniciar com o Windows. Toda a configuração fica num `config.json`.
 - [Modos especiais](#modos-especiais)
 - [Configuração](#configuração)
 - [Quais janelas entram no grid](#quais-janelas-entram-no-grid)
+- [Log para diagnóstico](#log-para-diagnóstico)
 - [Limitações conhecidas](#limitações-conhecidas)
 - [Desenvolvimento](#desenvolvimento)
 
@@ -188,6 +189,7 @@ segurada.
 |---|---|---|
 | `Alt` + `Shift` + `c` | `toggle-center` | Centraliza a janela; de novo, devolve ao lugar no grid ([detalhes](#janela-no-centro)) |
 | `Alt` + `Shift` + `f` | `toggle-full-height` | A janela ocupa a coluna inteira; de novo, volta a dividir ([detalhes](#altura-total)) |
+| `Alt` + `Shift` + `g` | `toggle-solo-column` | A janela fica sozinha na coluna e as outras dela vão para a coluna vizinha; de novo, desfaz ([detalhes](#coluna-só-dela)) |
 | `Alt` + `Shift` + `m` | `minimize` | Minimiza (o lugar no grid fica guardado) |
 
 ### Grid
@@ -256,6 +258,27 @@ clicando) passa a altura total para ela: a coluna funciona como uma pilha.
 
 `Alt+Shift+F` de novo volta a dividir a coluna, com as proporções de antes.
 
+### Coluna só dela
+
+`Alt+Shift+G` também faz a janela focada ocupar a coluna inteira, mas sem
+deixar ninguém atrás: as outras janelas da coluna vão para a coluna vizinha (a
+da direita; se a janela já está na última coluna, a da esquerda) e se empilham
+com as que já estavam lá. A largura das colunas é mantida.
+
+```
++-----+-----+          +-----+-----+
+|  A* |  C  |          |     |  B  |
++-----+-----+   -->    |  A* +-----+
+|  B  |  D  |          |     |  C  |
++-----+-----+          |     +-----+
+                       |     |  D  |
+                       +-----+-----+
+```
+
+`Alt+Shift+G` de novo na mesma janela volta ao arranjo de antes (ordem e
+proporções). Abrir, fechar ou minimizar uma janela naquele monitor também
+volta ao grid automático.
+
 ### Grid desligado
 
 Com `Alt+Shift+T`, o minWinM deixa as janelas onde estão. Foco
@@ -308,6 +331,7 @@ Exemplo:
 | `resize_step` | `0.05` | Fração da tela que cada grow/shrink adiciona ou remove |
 | `ignore` | `["Taskmgr.exe"]` | Executáveis ou classes de janela que nunca entram no grid (sem diferenciar maiúsculas) |
 | `tray_icon` | `true` | Mostra o ícone na área de notificação |
+| `log_verbose` | `false` | Liga o log detalhado desde o início ([detalhes](#log-para-diagnóstico)) |
 | `bindings` | ver acima | Mapa `"atalho": "ação"` |
 
 ### Escrevendo atalhos
@@ -326,7 +350,7 @@ obrigatório pelo menos um modificador.
 | Foco e movimento | `focus-left` `focus-down` `focus-up` `focus-right` · `move-left` `move-down` `move-up` `move-right` · `next-monitor` `prev-monitor` |
 | Áreas de trabalho | `desktop-1` … `desktop-9` `desktop-next` `desktop-prev` · `move-to-desktop-1` … `move-to-desktop-9` `move-to-desktop-next` `move-to-desktop-prev` · `desktop-create` `desktop-delete` |
 | Tamanho | `grow-width` `shrink-width` `grow-height` `shrink-height` `balance` · `gap-increase` `gap-decrease` |
-| Janela | `toggle-center` `toggle-full-height` `minimize` |
+| Janela | `toggle-center` `toggle-full-height` `toggle-solo-column` `minimize` |
 | Grid | `toggle-tiling` `retile` `quit` |
 | Presets | `left` `right` `top` `bottom` `top-left` `top-right` `bottom-left` `bottom-right` `left-third` `center-third` `right-third` `left-two-thirds` `right-two-thirds` `maximize` `center` |
 
@@ -346,6 +370,27 @@ de fora:
 
 ---
 
+## Log para diagnóstico
+
+O minWinM grava um `minWinM.log` **ao lado do `minWinM.exe`** (na instalação:
+`%LOCALAPPDATA%\Programs\minWinM\minWinM.log`). Para não crescer à toa:
+
+- **Erros são gravados sempre:** atalho que não registrou, falha nas áreas de
+  trabalho, config inválida, erro interno inesperado. São raros, então o
+  arquivo fica pequeno — e nem é criado se nada der errado.
+- **O log detalhado só quando você liga:** pelo menu do ícone (**Log
+  detalhado**) ou com `"log_verbose": true` no `config.json`. Ele registra a
+  versão do Windows, os monitores, as janelas de cada grid, cada atalho usado
+  e janelas entrando e saindo do grid. Ligado pelo menu, vale até fechar o
+  minWinM.
+- **Tamanho limitado:** ao passar de 1 MB o arquivo vira `minWinM.log.old` e
+  recomeça (no máximo ~2 MB no total).
+
+Para relatar um problema: ligue o **Log detalhado**, repita o que deu errado e
+use **Abrir log** no mesmo menu. O log identifica as janelas pelo executável e
+pela classe (ex.: `chrome.exe [Chrome_WidgetWin_1]`), **nunca pelo título**,
+que pode ter nomes de documentos ou e-mails.
+
 ## Limitações conhecidas
 
 - **Apps rodando como administrador** não podem ser movidos por um processo
@@ -362,6 +407,9 @@ de fora:
   Ao redimensionar (teclado ou mouse), o minWinM para no limite em que alguma
   janela começaria a cobrir a vizinha. Com muitas janelas num monitor pequeno,
   porém, um app desses ainda pode ultrapassar o seu espaço.
+- **App lento para responder:** mover uma janela espera o app dela responder.
+  Se um app engasga (sem chegar a "Não respondendo"), os atalhos do minWinM
+  podem demorar alguns segundos; o resto do sistema não é afetado.
 - **Drivers Intel antigos** usam `Ctrl+Alt+setas` para girar a tela.
 - **Trocar, criar e excluir áreas de trabalho e mover janelas entre áreas**
   usam uma API interna do Windows, sem documentação, que a Microsoft muda
@@ -414,6 +462,7 @@ internal/
   icon/              desenho do ícone em pixels
   win/               chamadas à API do Windows (só mecanismo, sem regras)
   wm/                o gerenciador: grid por monitor, eventos, mouse e ações
+  applog/            log de diagnóstico (minWinM.log)
 scripts/             install.ps1 / uninstall.ps1
 tools/genicon/       exporta o ícone como PNG (usado pelo go generate)
 winres/              ícone e versão do .exe → rsrc_windows_amd64.syso

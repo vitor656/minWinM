@@ -7,6 +7,11 @@ import "minwinm/internal/win"
 // OnEvent recebe os eventos de janela do Windows. A maioria só agenda um
 // re-tile (ver retileDelay); foco e arrasto são tratados na hora.
 func (m *Manager) OnEvent(event uint32, hwnd uintptr) {
+	// Janela fechada no meio do arrasto: o MOVESIZEEND não vem, e o hook de
+	// movimentos da thread dela ficaria entregando eventos.
+	if event == win.EventDestroy && hwnd != 0 && hwnd == m.drag.hwnd {
+		m.dragStop()
+	}
 	if !m.enabled {
 		return
 	}

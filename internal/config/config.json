@@ -4,6 +4,7 @@
   "resize_step": 0.05,
   "ignore": ["Taskmgr.exe"],
   "tray_icon": true,
+  "log_verbose": false,
   "bindings": {
     "alt+h": "focus-left",
     "alt+j": "focus-down",
@@ -23,6 +24,7 @@
 
     "alt+shift+c": "toggle-center",
     "alt+shift+f": "toggle-full-height",
+    "alt+shift+g": "toggle-solo-column",
     "alt+shift+m": "minimize",
     "alt+shift+t": "toggle-tiling",
     "alt+shift+r": "retile",

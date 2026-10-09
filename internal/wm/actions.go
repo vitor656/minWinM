@@ -63,6 +63,7 @@ func buildActions() map[string]Action {
 		// Janela focada.
 		"toggle-center":      {run: onFocused((*Manager).toggleCenter)},
 		"toggle-full-height": {run: onFocused((*Manager).toggleFullHeight)},
+		"toggle-solo-column": {run: onFocused((*Manager).toggleSoloColumn)},
 		"minimize":           {run: onFocused(func(_ *Manager, h uintptr) { win.Minimize(h) })},
 		"next-monitor":       {run: onFocused(func(m *Manager, h uintptr) { m.moveToMonitor(h, +1) })},
 		"prev-monitor":       {run: onFocused(func(m *Manager, h uintptr) { m.moveToMonitor(h, -1) })},

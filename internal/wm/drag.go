@@ -7,6 +7,8 @@ package wm
 // ao vivo; ao soltar, o tamanho final vira a nova proporção do slot.
 
 import (
+	"time"
+
 	"minwinm/internal/grid"
 	"minwinm/internal/win"
 )
@@ -20,7 +22,13 @@ type dragState struct {
 	before grid.Sizes // proporções no início
 	shape  []int      // formato do grid no início; se mudar, o arrasto é abandonado
 	hook   uintptr    // hook de EVENT_OBJECT_LOCATIONCHANGE só da thread da janela
+	last   time.Time  // último reposicionamento das vizinhas (ver dragInterval)
 }
+
+// dragInterval limita o reposicionamento das vizinhas durante o arrasto a
+// ~60 vezes por segundo: o Windows manda um evento por pixel movido, e cada
+// um faria todas as vizinhas repintarem. O tamanho final vem do dragEnd.
+const dragInterval = 16 * time.Millisecond
 
 // dragStart começa a acompanhar um arrasto de uma janela do grid.
 func (m *Manager) dragStart(hwnd uintptr) {
@@ -65,6 +73,9 @@ func (d *dragState) sameGrid(slots []*tile) bool {
 // e reposiciona as outras janelas (a arrastada é do usuário até soltar).
 func (m *Manager) dragMove() {
 	d := &m.drag
+	if time.Since(d.last) < dragInterval {
+		return
+	}
 	got, ok := win.FrameBounds(d.hwnd)
 	if !ok || !d.resized(got) {
 		return
@@ -80,6 +91,7 @@ func (m *Manager) dragMove() {
 	d.ws.Restore(d.before)
 	d.ws.FollowEdges(mon.Work, m.gaps, d.slot, slots[d.slot].tall, d.start, got)
 	m.layout(d.ws)
+	d.last = time.Now()
 }
 
 // dragEnd trata o fim do arrasto. Devolve true se foi redimensionamento

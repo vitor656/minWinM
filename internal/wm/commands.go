@@ -13,6 +13,8 @@ import (
 // atual da tela.
 func (m *Manager) toggle() {
 	m.enabled = !m.enabled
+	// Desligado, OnEvent não vê o fim de um arrasto em andamento.
+	m.dragStop()
 	if m.enabled {
 		m.spaces = nil
 		m.retile()
@@ -290,6 +292,57 @@ func (m *Manager) toggleFullHeight(hwnd uintptr) {
 	m.layout(ws)
 }
 
+// toggleSoloColumn deixa a janela sozinha na coluna dela, em altura total,
+// e empurra as outras da coluna para a coluna vizinha (o grid se refaz, sem
+// janelas atrás de outras). De novo, volta ao arranjo de antes; abrir ou
+// fechar uma janela também volta ao formato automático.
+func (m *Manager) toggleSoloColumn(hwnd uintptr) {
+	ws, i := m.find(hwnd)
+	if !m.enabled || ws == nil || ws.tiles[i].floating {
+		return
+	}
+	mon, ok := win.MonitorInfo(ws.mon)
+	if !ok {
+		return
+	}
+	tl := ws.tiles[i]
+	slots := ws.slots(mon)
+	if ws.Custom() && ws.solo.tile == tl {
+		ws.unsolo(mon)
+		m.layout(ws)
+		return
+	}
+	s := slotOf(slots, tl)
+	shape, order, ok := grid.SoloColumn(ws.Shape(), s)
+	if !ok {
+		return
+	}
+	if !ws.Custom() { // solo em cima de solo volta ao arranjo do primeiro
+		ws.solo = soloState{tiles: append([]*tile(nil), ws.tiles...), sizes: ws.Snapshot()}
+	}
+	ws.solo.tile = tl
+	for _, sib := range ws.sameColumn(slots, s) {
+		sib.tall = false // a coluna passa a ser só dela
+	}
+
+	// Reordena só os tiles que ocupam slot; minimizados ficam onde estão.
+	occupied := map[*tile]bool{}
+	for _, o := range slots {
+		occupied[o] = true
+	}
+	var pos []int
+	for j, o := range ws.tiles {
+		if occupied[o] {
+			pos = append(pos, j)
+		}
+	}
+	for k, o := range order {
+		ws.tiles[pos[k]] = slots[o]
+	}
+	ws.SetShape(shape)
+	m.layout(ws)
+}
+
 // toggleCenter centraliza a janela e, na segunda vez, devolve ela para onde
 // estava: o slot do grid (tiling ligado) ou a posição anterior (desligado).
 // Numa janela que está em qualquer preset, só faz ela voltar.
@@ -319,6 +372,11 @@ func (m *Manager) preset(hwnd uintptr, name string) {
 		tl.floating, tl.preset = true, name
 		m.placePreset(hwnd, name)
 		return
+	}
+	for h := range m.saved { // esquece janelas que já fecharam
+		if !win.IsWindow(h) {
+			delete(m.saved, h)
+		}
 	}
 	s, ok := m.saved[hwnd]
 	if ok && s.preset == name {

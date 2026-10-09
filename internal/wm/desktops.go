@@ -51,7 +51,7 @@ func (m *Manager) gotoDesktop(n, step int) {
 		return
 	}
 	if err := m.vd.Switch(id); err != nil {
-		m.logf("áreas de trabalho: %v", err)
+		m.errorf("áreas de trabalho: %v", err)
 		return
 	}
 	m.desk = id
@@ -70,7 +70,7 @@ func (m *Manager) sendToDesktop(hwnd uintptr, n, step int) {
 		return
 	}
 	if err := m.vd.MoveWindow(hwnd, id); err != nil {
-		m.logf("áreas de trabalho: %v", err)
+		m.errorf("áreas de trabalho: %v", err)
 		return
 	}
 	if ws, i := m.find(hwnd); ws != nil {
@@ -88,11 +88,11 @@ func (m *Manager) sendToDesktop(hwnd uintptr, n, step int) {
 func (m *Manager) createDesktop() {
 	id, err := m.vd.Create()
 	if err != nil {
-		m.logf("áreas de trabalho: %v", err)
+		m.errorf("áreas de trabalho: %v", err)
 		return
 	}
 	if err := m.vd.Switch(id); err != nil {
-		m.logf("áreas de trabalho: %v", err)
+		m.errorf("áreas de trabalho: %v", err)
 		return
 	}
 	m.desk = id
@@ -112,12 +112,12 @@ func (m *Manager) deleteDesktop() {
 	}
 	// Troca antes de excluir para a área atual ser sempre conhecida.
 	if err := m.vd.Switch(to); err != nil {
-		m.logf("áreas de trabalho: %v", err)
+		m.errorf("áreas de trabalho: %v", err)
 		return
 	}
 	m.desk = to
 	if err := m.vd.Remove(gone, to); err != nil {
-		m.logf("áreas de trabalho: %v", err)
+		m.errorf("áreas de trabalho: %v", err)
 		m.focusTop()
 		return
 	}

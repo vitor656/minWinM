@@ -15,6 +15,7 @@ type tile struct {
 	floating bool
 	preset   string // preset em que está flutuando
 	tall     bool   // ocupa a altura inteira da coluna (toggle-full-height)
+	desc     string // identificação para o log (só preenchida com o log detalhado)
 }
 
 // workspace é o grid de um monitor numa área de trabalho virtual. tiles fica
@@ -26,6 +27,46 @@ type workspace struct {
 	desk  win.DesktopID
 	tiles []*tile
 	grid.Layout
+	solo soloState
+}
+
+// soloState guarda o toggle-solo-column: a janela que ganhou a coluna e o
+// arranjo automático de antes, para voltar a ele. Só vale enquanto o
+// formato fixado durar (ver grid.Layout.Custom).
+type soloState struct {
+	tile  *tile
+	tiles []*tile    // ordem antes do primeiro solo
+	sizes grid.Sizes // proporções antes do primeiro solo
+}
+
+// unsolo volta ao formato automático, com a ordem e as proporções de antes
+// do solo (a ordem só se as janelas ainda forem as mesmas).
+func (ws *workspace) unsolo(mon win.Monitor) {
+	prev := ws.solo
+	ws.solo = soloState{}
+	ws.ClearShape()
+	if sameTiles(prev.tiles, ws.tiles) {
+		copy(ws.tiles, prev.tiles)
+	}
+	ws.slots(mon) // refaz o formato automático antes de restaurar
+	ws.Restore(prev.sizes)
+}
+
+// sameTiles diz se a e b têm os mesmos tiles, em qualquer ordem.
+func sameTiles(a, b []*tile) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	in := map[*tile]bool{}
+	for _, t := range a {
+		in[t] = true
+	}
+	for _, t := range b {
+		if !in[t] {
+			return false
+		}
+	}
+	return true
 }
 
 // slots devolve os tiles que ocupam o grid agora (inclusive flutuantes, que

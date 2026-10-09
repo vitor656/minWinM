@@ -22,6 +22,7 @@ var wantActions = []string{
 	"desktop-create", "desktop-delete",
 	"quit", "next-monitor", "prev-monitor",
 	"toggle-tiling", "retile", "balance", "toggle-center", "minimize", "toggle-full-height",
+	"toggle-solo-column",
 	"grow-width", "shrink-width", "grow-height", "shrink-height",
 	"gap-increase", "gap-decrease",
 	"focus-left", "focus-down", "focus-up", "focus-right",
