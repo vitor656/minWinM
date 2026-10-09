@@ -279,3 +279,55 @@ func TestSetShapeLastsWhileCountSame(t *testing.T) {
 		t.Fatalf("ClearShape não voltou ao automático: %v", l.Shape())
 	}
 }
+
+func TestFitKeepPreservesSizes(t *testing.T) {
+	// 3 janelas [1,2]: A larga à esquerda (0.7); B e C empilhadas (0.6/0.4).
+	var l Layout
+	l.Fit(3)
+	l.colW = []float64{0.7, 0.3}
+	l.rowW = [][]float64{{1}, {0.6, 0.4}}
+	a, b, c := l.Cell(0), l.Cell(1), l.Cell(2)
+
+	// C fecha: [1,1] mantém A com 0.7.
+	l.FitKeep([]Frac{a, b})
+	if !equalFloats(l.colW, []float64{0.7, 0.3}) {
+		t.Fatalf("fechar C: colW = %v, want [0.7 0.3]", l.colW)
+	}
+
+	// Volta a 3 com C de novo (tamanho antigo conhecido): mesmo arranjo.
+	l.FitKeep([]Frac{a, b, c})
+	if !equalFloats(l.colW, []float64{0.7, 0.3}) || !equalFloats(l.rowW[1], []float64{0.6, 0.4}) {
+		t.Fatalf("reabrir C: colW %v rowW %v", l.colW, l.rowW)
+	}
+
+	// Janela nova (desconhecida) numa coluna: altura = média das vizinhas.
+	l.FitKeep([]Frac{a, b})
+	l.FitKeep([]Frac{a, b, {}})
+	if !equalFloats(l.colW, []float64{0.7, 0.3}) || !equalFloats(l.rowW[1], []float64{0.5, 0.5}) {
+		t.Fatalf("janela nova: colW %v rowW %v", l.colW, l.rowW)
+	}
+}
+
+func TestFitKeepUnknownIsEqual(t *testing.T) {
+	var l Layout
+	l.FitKeep(make([]Frac, 5))
+	var want Layout
+	want.Fit(5)
+	if !equalFloats(l.colW, want.colW) {
+		t.Fatalf("sem tamanhos conhecidos: colW %v, want %v", l.colW, want.colW)
+	}
+}
+
+func TestNormalizeRespectsMinPart(t *testing.T) {
+	got := normalize([]float64{0.95, 0.02, 0.03})
+	total := 0.0
+	for _, p := range got {
+		total += p
+		if p < MinPart-eps {
+			t.Fatalf("parte abaixo do mínimo: %v", got)
+		}
+	}
+	if math.Abs(total-1) > eps {
+		t.Fatalf("soma %v != 1: %v", total, got)
+	}
+}

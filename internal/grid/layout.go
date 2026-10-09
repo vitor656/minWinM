@@ -70,8 +70,9 @@ func SoloColumn(shape []int, slot int) (newShape, order []int, ok bool) {
 // proporções das colunas e das linhas de cada coluna (cada lista soma 1).
 //
 // Os slots são numerados coluna a coluna, de cima para baixo. As
-// proporções pertencem aos slots e voltam a ser iguais quando o formato do
-// grid muda (uma janela entra ou sai). O valor zero é um grid vazio.
+// proporções pertencem aos slots; quando o formato do grid muda (uma janela
+// entra ou sai), FitKeep as recalcula a partir do tamanho que cada janela
+// tinha (Fit simplesmente as iguala). O valor zero é um grid vazio.
 //
 // O formato normalmente é Shape(n); SetShape fixa outro até o número de
 // janelas mudar.
@@ -84,15 +85,115 @@ type Layout struct {
 
 // Fit ajusta o grid para n janelas; se o formato mudar, zera as proporções.
 // Um formato fixado vale enquanto continuar sendo para n janelas.
-func (l *Layout) Fit(n int) {
+func (l *Layout) Fit(n int) { l.FitKeep(make([]Frac, n)) }
+
+// FitKeep é Fit(len(prev)), mas, se o formato mudar, as proporções novas
+// partem do tamanho que cada janela tinha: prev[i] é a fração antiga da
+// janela que fica no slot i (W == 0 = desconhecida, ex.: janela nova). Ver
+// keepSizes.
+func (l *Layout) FitKeep(prev []Frac) {
+	n := len(prev)
 	if l.custom && sum(l.shape) == n {
 		return
 	}
 	l.custom = false
 	if shape := Shape(n); !equalInts(shape, l.shape) {
 		l.shape = shape
-		l.Reset()
+		l.colW, l.rowW = keepSizes(shape, prev)
 	}
+}
+
+// keepSizes calcula as proporções de um formato novo a partir do tamanho
+// antigo das janelas: a largura de uma coluna é a média das larguras que
+// suas janelas tinham, e as linhas mantêm a altura relativa de cada uma;
+// depois tudo é reescalado para fechar a tela. Tamanho desconhecido vale a
+// média das conhecidas (iguais, se nenhuma é conhecida).
+func keepSizes(shape []int, prev []Frac) ([]float64, [][]float64) {
+	cols := make([]float64, len(shape))
+	rows := make([][]float64, len(shape))
+	s := 0
+	for c, k := range shape {
+		var ws []float64
+		hs := make([]float64, k)
+		for r := range hs {
+			if f := prev[s+r]; f.W > 0 && f.H > 0 {
+				ws = append(ws, f.W)
+				hs[r] = f.H
+			}
+		}
+		cols[c] = mean(ws)
+		rows[c] = normalize(fillUnknown(hs))
+		s += k
+	}
+	return normalize(fillUnknown(cols)), rows
+}
+
+// mean é a média de v, ou 0 (desconhecido) se v está vazio.
+func mean(v []float64) float64 {
+	if len(v) == 0 {
+		return 0
+	}
+	t := 0.0
+	for _, x := range v {
+		t += x
+	}
+	return t / float64(len(v))
+}
+
+// fillUnknown troca os zeros pela média dos outros valores (ou por 1, se
+// todos são zero).
+func fillUnknown(parts []float64) []float64 {
+	var known []float64
+	for _, p := range parts {
+		if p > 0 {
+			known = append(known, p)
+		}
+	}
+	m := mean(known)
+	if m == 0 {
+		m = 1
+	}
+	for i, p := range parts {
+		if p <= 0 {
+			parts[i] = m
+		}
+	}
+	return parts
+}
+
+// normalize reescala parts para somar 1, com cada parte ≥ MinPart (o que
+// falta às pequenas sai das outras, na proporção do que elas têm acima do
+// mínimo).
+func normalize(parts []float64) []float64 {
+	if float64(len(parts))*MinPart > 1 {
+		return equalParts(len(parts))
+	}
+	total := 0.0
+	for _, p := range parts {
+		total += p
+	}
+	for i := range parts {
+		parts[i] /= total
+	}
+	deficit, spare := 0.0, 0.0
+	for _, p := range parts {
+		if p < MinPart {
+			deficit += MinPart - p
+		} else {
+			spare += p - MinPart
+		}
+	}
+	if deficit == 0 {
+		return parts
+	}
+	for i, p := range parts {
+		if p < MinPart {
+			parts[i] = MinPart
+		} else {
+			parts[i] = p - (p-MinPart)*deficit/spare
+		}
+	}
+	return parts
 }
 
 // SetShape fixa o formato (janelas por coluna). Mantém as larguras das

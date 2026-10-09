@@ -284,7 +284,7 @@ func (m *Manager) applySizes(ws *workspace, mon win.Monitor, before, target grid
 	for _, k := range []float64{1, 0.5, 0.25} {
 		ws.Restore(grid.Blend(before, target, k))
 		m.layout(ws)
-		if !ws.overflows(mon, m.gaps) {
+		if !ws.overflows(mon, m.gaps, before) {
 			return
 		}
 	}

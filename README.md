@@ -137,6 +137,11 @@ As janelas ocupam o grid coluna a coluna, de cima para baixo.
 - **Proporções:** larguras de coluna e alturas de linha podem ser ajustadas e
   sempre somam a tela inteira, então o grid nunca fica com buracos nem
   sobreposições. Nenhuma coluna ou linha fica com menos de 10% da tela.
+- **Abrir ou fechar janelas mantém os ajustes:** quando o grid muda de formato,
+  cada janela parte do tamanho que tinha (uma coluna fica com a largura das
+  janelas que vão para ela, e cada janela com a sua altura relativa) e o grid
+  se reajusta para fechar a tela. Uma janela nova recebe a média das vizinhas.
+  `Ctrl+Alt+B` (`balance`) volta tudo para tamanhos iguais.
 
 ---
 

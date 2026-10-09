@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"minwinm/internal/config"
+	"minwinm/internal/grid"
 	"minwinm/internal/win"
 )
 
@@ -156,5 +157,27 @@ func TestFallbackDesktop(t *testing.T) {
 	}
 	if _, ok := fallbackDesktop(list[:1], d(1)); ok {
 		t.Error("não deveria excluir a única área")
+	}
+}
+
+func TestOverflowGrew(t *testing.T) {
+	rect := func(w, h int32) grid.Rect { return grid.Rect{Right: w, Bottom: h} }
+	cases := []struct {
+		name             string
+		got, now, before grid.Rect
+		want             bool
+	}{
+		{"cabe", rect(500, 300), rect(500, 300), rect(400, 300), false},
+		{"passou a não caber na largura", rect(400, 300), rect(300, 300), rect(400, 300), true},
+		// Altura mínima maior que o slot (coluna com muitas empilhadas):
+		// já não cabia antes, então mexer só na largura é permitido.
+		{"já não cabia na altura", rect(600, 400), rect(600, 250), rect(500, 250), false},
+		{"altura piorou", rect(500, 400), rect(500, 200), rect(500, 250), true},
+		{"dentro da tolerância", rect(302, 300), rect(300, 300), rect(400, 300), false},
+	}
+	for _, c := range cases {
+		if got := overflowGrew(c.got, c.now, c.before); got != c.want {
+			t.Errorf("%s: overflowGrew = %v, want %v", c.name, got, c.want)
+		}
 	}
 }

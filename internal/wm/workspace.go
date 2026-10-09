@@ -16,6 +16,10 @@ type tile struct {
 	preset   string // preset em que está flutuando
 	tall     bool   // ocupa a altura inteira da coluna (toggle-full-height)
 	desc     string // identificação para o log (só preenchida com o log detalhado)
+	// frac é a célula do tile no último slots(): o tamanho que ele tinha,
+	// usado para refazer o grid quando o formato muda (ver grid.FitKeep).
+	// Zero = ainda sem lugar no grid.
+	frac grid.Frac
 }
 
 // workspace é o grid de um monitor numa área de trabalho virtual. tiles fica
@@ -74,12 +78,19 @@ func sameTiles(a, b []*tile) bool {
 // lista devolvida é o número do slot.
 func (ws *workspace) slots(mon win.Monitor) []*tile {
 	var out []*tile
+	var prev []grid.Frac
 	for _, tl := range ws.tiles {
 		if occupies(tl, mon) {
 			out = append(out, tl)
+			prev = append(prev, tl.frac)
 		}
 	}
-	ws.Fit(len(out))
+	// Se uma janela entrou ou saiu, o grid se refaz a partir do tamanho que
+	// cada uma tinha, mantendo os redimensionamentos.
+	ws.FitKeep(prev)
+	for i, tl := range out {
+		tl.frac = ws.Cell(i)
+	}
 	return out
 }
 
@@ -130,11 +141,25 @@ func (ws *workspace) coveredByTall(slots []*tile, i int) bool {
 	return false
 }
 
-// overflows diz se alguma janela do grid ficou maior que o seu slot
-// (tamanho mínimo do app), ou seja, se está sobrepondo uma vizinha.
-func (ws *workspace) overflows(mon win.Monitor, g grid.Gaps) bool {
-	const tolerance = 2
+// overflows diz se, com as proporções atuais (já posicionadas), alguma
+// janela do grid passou a ficar maior que o seu slot (tamanho mínimo do
+// app) mais do que ficaria com as proporções before — ou seja, se a mudança
+// fez uma janela cobrir a vizinha. Uma janela que já não cabia antes (ex.:
+// muitas empilhadas numa coluna baixa) não impede mexer no resto.
+func (ws *workspace) overflows(mon win.Monitor, g grid.Gaps, before grid.Sizes) bool {
 	slots := ws.slots(mon)
+	now := ws.Snapshot()
+	wantNow := make([]grid.Rect, len(slots))
+	for i := range slots {
+		wantNow[i] = ws.slotRect(mon, slots, i, g)
+	}
+	ws.Restore(before)
+	wantBefore := make([]grid.Rect, len(slots))
+	for i := range slots {
+		wantBefore[i] = ws.slotRect(mon, slots, i, g)
+	}
+	ws.Restore(now)
+
 	for i, tl := range slots {
 		if tl.floating || win.IsHung(tl.hwnd) || (!tl.tall && ws.coveredByTall(slots, i)) {
 			continue // flutuantes e vizinhas de um tile em altura total ficam atrás de propósito
@@ -143,10 +168,20 @@ func (ws *workspace) overflows(mon win.Monitor, g grid.Gaps) bool {
 		if !ok {
 			continue
 		}
-		want := ws.slotRect(mon, slots, i, g)
-		if got.W() > want.W()+tolerance || got.H() > want.H()+tolerance {
+		if overflowGrew(got, wantNow[i], wantBefore[i]) {
 			return true
 		}
 	}
 	return false
+}
+
+// overflowGrew diz se a janela, com tamanho got, ultrapassa o slot now mais
+// do que ultrapassaria o slot before (em largura ou altura). Se ela
+// ultrapassa now, got é o tamanho mínimo dela — e com before ela ficaria
+// com max(got, before), então o excesso lá seria got - before.
+func overflowGrew(got, now, before grid.Rect) bool {
+	const tolerance = 2
+	excess := func(got, want int32) int32 { return max(0, got-want) }
+	return excess(got.W(), now.W()) > excess(got.W(), before.W())+tolerance ||
+		excess(got.H(), now.H()) > excess(got.H(), before.H())+tolerance
 }
