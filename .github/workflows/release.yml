@@ -1,0 +1,51 @@
+# Publica uma versão no GitHub Releases ao criar uma tag v*:
+#   git tag v0.2.0 && git push --tags
+# Anexa minWinM.zip (exe + config.json padrão + uninstall.ps1), que o
+# scripts/install.ps1 baixa, e o minWinM.exe avulso.
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Testes
+        run: |
+          go vet ./...
+          go test ./...
+
+      - name: Compilar
+        run: |
+          V="${GITHUB_REF_NAME#v}"
+          # Versão do .exe (Gerenciador de Tarefas, Configurações > Aplicativos)
+          # vem do .syso: regenera com a versão da tag.
+          go run github.com/tc-hib/go-winres@v0.3.3 make --in winres/winres.json --arch amd64 \
+            --product-version "$V" --file-version "$V"
+          go build -ldflags="-H=windowsgui -s -w -X main.version=$V" -o minWinM.exe .
+
+      - name: Empacotar
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory pkg | Out-Null
+          Copy-Item minWinM.exe, internal/config/config.json, scripts/uninstall.ps1 pkg
+          Compress-Archive pkg/* minWinM.zip
+
+      - name: Publicar
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" minWinM.zip minWinM.exe --title "minWinM $GITHUB_REF_NAME" --generate-notes

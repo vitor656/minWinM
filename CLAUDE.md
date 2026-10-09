@@ -15,12 +15,19 @@ Módulo `minwinm`; única dependência: `golang.org/x/sys/windows`. `main`, `int
     go build -ldflags="-H=windowsgui -s -w" -o minWinM.exe .   # sem console, segundo plano
     go generate .                    # só ao mudar ícone/versão: recria winres/*.png e rsrc_windows_amd64.syso
     powershell -ExecutionPolicy Bypass -File scripts\install.ps1   # instala, inicia com o Windows e abre (rodar de novo = atualizar)
+    git tag vX.Y.Z && git push --tags   # publica uma Release (.github/workflows/release.yml); só quando o Vitor pedir
     go vet ./...
     go test ./...
     go test -run TestFollowEdges ./internal/grid/
     GOOS=linux go vet ./internal/grid/ ./internal/config/ ./internal/icon/ ./internal/applog/   # garante que seguem sem dependência do Windows
 
 Rodar o binário reorganiza as janelas reais do usuário — não faça isso sem pedir. Não há teste automatizado da interação com o Windows.
+
+## Instalação e Release
+
+- [scripts/install.ps1](scripts/install.ps1) é o único instalador: rodando de um clone (há `go.mod` ao lado de `scripts\`) compila; via `iex` (sem `$PSScriptRoot`) baixa `releases/latest/download/minWinM.zip`. Depois: copia exe + `uninstall.ps1` para `%LOCALAPPDATA%\Programs\minWinM`, config (só se faltar), atalhos e a chave `HKCU\...\Uninstall\minWinM` (Configurações → Aplicativos; versão lida do VERSIONINFO do exe). [uninstall.ps1](scripts/uninstall.ps1) desfaz tudo e precisa trocar `[Environment]::CurrentDirectory` (não só `Set-Location`) para conseguir apagar a pasta de onde roda.
+- Os `.ps1` têm BOM UTF-8 (o PowerShell 5.1 precisa dele para os acentos), e o `iex` não aceita BOM — por isso a linha de instalação é `iex (irm <url>).TrimStart([char]0xFEFF)`, não `irm | iex`. Os scripts envolvem tudo em `& { }` para não vazar variáveis/`$ErrorActionPreference` na sessão de quem roda via `iex`.
+- [.github/workflows/release.yml](.github/workflows/release.yml): tag `v*` → testes, `go-winres make --product-version/--file-version` com a versão da tag (o `.syso` regenerado não é commitado), build com `-X main.version`, Release com `minWinM.zip` e `minWinM.exe`.
 
 ## Arquitetura
 

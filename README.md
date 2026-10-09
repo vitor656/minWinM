@@ -38,30 +38,68 @@ iniciar com o Windows. Toda a configuração fica num `config.json`.
 
 ## Começando
 
-Requisitos: Windows 10 ou 11 e [Go](https://go.dev/dl/) 1.22+ (só para
-compilar).
+Requisitos: Windows 10 ou 11. O [Go](https://go.dev/dl/) 1.22+ só é preciso
+para compilar a partir do código.
 
 ### Instalar (roda em segundo plano e inicia com o Windows)
 
-Na pasta do projeto:
+Abra o **PowerShell** e cole:
+
+```powershell
+iex (irm https://raw.githubusercontent.com/vitor656/minWinM/main/scripts/install.ps1).TrimStart([char]0xFEFF)
+```
+
+O script baixa a última versão publicada e:
+
+1. instala em `%LOCALAPPDATA%\Programs\minWinM` (só para o seu usuário, sem
+   precisar de administrador);
+2. cria ali um `config.json` editável (se ainda não existir; o seu nunca é
+   sobrescrito);
+3. cria um atalho no menu Iniciar e outro em *Inicializar*, para abrir junto
+   com o Windows;
+4. registra o minWinM em **Configurações → Aplicativos**, para desinstalar por
+   lá;
+5. inicia o minWinM.
+
+Rodar a mesma linha de novo **atualiza** para a versão mais nova (fecha a que
+está rodando e abre a nova).
+
+> **Aviso do Windows ou do antivírus:** o `minWinM.exe` não tem assinatura
+> digital. Baixando o `.zip` pelo navegador, o Windows pode mostrar "O Windows
+> protegeu o computador": clique em *Mais informações → Executar assim mesmo*.
+> Algum antivírus também pode desconfiar de um programa que registra atalhos
+> globais e acompanha as janelas. O código está todo aqui no repositório.
+
+**Sem script:** baixe o `minWinM.zip` em
+[Releases](https://github.com/vitor656/minWinM/releases/latest), extraia onde
+quiser e abra o `minWinM.exe` (sem atalhos nem entrada em Configurações).
+
+**A partir do código** (clone o repositório; precisa do Go): na pasta do
+projeto,
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\install.ps1
 ```
 
-O script:
+faz a mesma instalação, só que compilando o `minWinM.exe` em vez de baixar.
+Rodar de novo recompila e atualiza. Nos dois casos, `-NoStartup` instala sem
+iniciar com o Windows e `-ResetConfig` troca a config pela padrão (veja
+abaixo).
 
-1. compila o `minWinM.exe` sem janela de console;
-2. instala em `%LOCALAPPDATA%\Programs\minWinM`;
-3. cria ali um `config.json` editável (se ainda não existir; o seu nunca é
-   sobrescrito);
-4. cria um atalho no menu Iniciar e outro em *Inicializar*, para abrir junto
-   com o Windows;
-5. inicia o minWinM.
+### Desinstalar
 
-Rodar o script de novo **atualiza** a instalação: fecha a versão em execução,
-recompila e abre de novo. Para instalar sem iniciar com o Windows, acrescente
-`-NoStartup`.
+**Configurações → Aplicativos → Aplicativos instalados → minWinM →
+Desinstalar.** Isso fecha o minWinM e remove os atalhos, a entrada em
+Configurações e a pasta `%LOCALAPPDATA%\Programs\minWinM` (com a config e o
+log). Nada mais fica no sistema.
+
+Para guardar o `config.json`, rode no PowerShell:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\Programs\minWinM\uninstall.ps1" -KeepConfig
+```
+
+### No dia a dia
 
 - **Está rodando?** Procure o ícone do minWinM na área de notificação (perto
   do relógio; pode estar no `^` dos ícones ocultos): um mini-grid **azul** com
@@ -72,11 +110,10 @@ recompila e abre de novo. Para instalar sem iniciar com o Windows, acrescente
 - **Abrir de novo:** menu Iniciar → *minWinM*.
 - **Mudar atalhos:** edite `%LOCALAPPDATA%\Programs\minWinM\config.json` e
   reabra o minWinM (`Ctrl+Alt+Q` e abrir pelo menu Iniciar).
-- **Receber atalhos novos depois de atualizar:** o script nunca sobrescreve o
-  seu `config.json`. Para trocá-lo pelo padrão atual, rode com `-ResetConfig`
-  (o antigo fica em `config.json.bak`).
-- **Desinstalar:** `powershell -ExecutionPolicy Bypass -File scripts\uninstall.ps1`
-  (com `-KeepConfig` para guardar o `config.json`).
+- **Receber atalhos novos depois de atualizar:** o instalador nunca
+  sobrescreve o seu `config.json`. Para trocá-lo pelo padrão atual, rode o
+  `scripts\install.ps1` com `-ResetConfig` (o antigo fica em
+  `config.json.bak`), ou apague o `config.json` e instale de novo.
 
 Só uma cópia roda por vez: abrir o minWinM com ele já aberto mostra um aviso.
 Erros de inicialização (como um `config.json` inválido) também aparecem numa
@@ -455,6 +492,20 @@ Isso redesenha os PNGs em `winres/` e recria o `.syso` com o
 [go-winres](https://github.com/tc-hib/go-winres). A ferramenta é baixada só para
 gerar o arquivo e não entra no `go.mod`.
 
+### Publicar uma versão
+
+```sh
+git tag v0.2.0
+git push --tags
+```
+
+A tag dispara o workflow [`release.yml`](.github/workflows/release.yml), que
+roda os testes, regenera o `.syso` com a versão da tag (sem o `v`), compila e
+cria a Release com `minWinM.zip` (exe + `config.json` padrão +
+`uninstall.ps1`) e o `minWinM.exe` avulso. A linha de instalação baixa sempre
+o `minWinM.zip` da Release mais recente. A versão também aparece no log
+(compilando localmente ela é `dev`).
+
 ### Estrutura
 
 ```
@@ -468,7 +519,7 @@ internal/
   win/               chamadas à API do Windows (só mecanismo, sem regras)
   wm/                o gerenciador: grid por monitor, eventos, mouse e ações
   applog/            log de diagnóstico (minWinM.log)
-scripts/             install.ps1 / uninstall.ps1
+scripts/             install.ps1 (baixa a Release ou compila) / uninstall.ps1
 tools/genicon/       exporta o ícone como PNG (usado pelo go generate)
 winres/              ícone e versão do .exe → rsrc_windows_amd64.syso
 ```

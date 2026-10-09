@@ -27,6 +27,10 @@ import (
 	"minwinm/internal/wm"
 )
 
+// version é a versão publicada; o workflow de release a define com
+// -ldflags "-X main.version=..." a partir da tag.
+var version = "dev"
+
 func main() {
 	// Os hotkeys e os hooks de eventos ficam presos à thread que os registrou.
 	runtime.LockOSThread()
@@ -51,7 +55,7 @@ func main() {
 	if cfg.LogVerbose {
 		applog.SetVerbose(true)
 	}
-	applog.Printf("minWinM iniciando: Windows build %d, config %s", win.OSBuild(), src)
+	applog.Printf("minWinM %s iniciando: Windows build %d, config %s", version, win.OSBuild(), src)
 
 	bindings := registerBindings(cfg.Bindings)
 	if len(bindings) == 0 {
