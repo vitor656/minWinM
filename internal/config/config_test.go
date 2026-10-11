@@ -3,8 +3,28 @@ package config
 import (
 	"bytes"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 )
+
+func TestEnsureFile(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "config.json")
+	if created, err := EnsureFile(p); err != nil || !created {
+		t.Fatal(created, err)
+	}
+	if got, _ := os.ReadFile(p); !bytes.Equal(got, defaultConfig) {
+		t.Fatal("EnsureFile deveria criar o arquivo com o padrão")
+	}
+	mine := []byte(`{"gap": 3}`)
+	os.WriteFile(p, mine, 0o644)
+	if created, err := EnsureFile(p); err != nil || created {
+		t.Fatal(created, err)
+	}
+	if got, _ := os.ReadFile(p); !bytes.Equal(got, mine) {
+		t.Fatal("EnsureFile não pode sobrescrever o arquivo do usuário")
+	}
+}
 
 func TestParseBinding(t *testing.T) {
 	cases := []struct {

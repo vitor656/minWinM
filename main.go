@@ -38,6 +38,11 @@ func main() {
 	cfgPath := flag.String("config", "", "caminho do config.json")
 	flag.Parse()
 
+	// Iniciado de dentro do VS Code (extensão, tarefa), o minWinM herda
+	// ELECTRON_RUN_AS_NODE=1 e o repassa a tudo que abre: o Code.exe aberto
+	// por "Editar atalhos" rodaria como Node e sairia sem abrir o arquivo.
+	os.Unsetenv("ELECTRON_RUN_AS_NODE")
+
 	// Duas cópias brigariam pelos mesmos atalhos e pelas mesmas janelas.
 	if !win.SingleInstance(`Local\minWinM`) {
 		fatal("O minWinM já está rodando.\n\nPara fechar, use o atalho 'quit' (padrão Ctrl+Alt+Q).")
@@ -57,7 +62,8 @@ func main() {
 	}
 	applog.Printf("minWinM %s iniciando: Windows build %d, config %s", version, win.OSBuild(), src)
 
-	bindings := registerBindings(cfg.Bindings)
+	keys := cfg.Bindings
+	bindings := registerBindings(keys)
 	if len(bindings) == 0 {
 		fatal("Nenhum atalho foi registrado. Confira os 'bindings' do config.json " +
 			"(rode com 'go run .' para ver o motivo de cada um).")
@@ -71,7 +77,9 @@ func main() {
 
 	var tray *trayUI
 	if cfg.TrayIcon == nil || *cfg.TrayIcon {
-		tray = startTray(m)
+		tray = startTray(m, config.UserPath(*cfgPath), func() bool {
+			return reload(*cfgPath, m, &keys, &bindings)
+		})
 		defer tray.close()
 	}
 	applog.Printf("rodando (tiling %s); Ctrl+C ou o atalho '%s' para sair",
@@ -121,6 +129,40 @@ func logPath() string {
 		return ""
 	}
 	return filepath.Join(filepath.Dir(exe), "minWinM.log")
+}
+
+// reload relê a config com o programa rodando: troca os atalhos e aplica o
+// resto ao gerenciador. Com a config inválida, avisa e mantém a atual; se
+// nenhum atalho novo registrar, volta aos anteriores. Devolve false se não
+// aplicou.
+func reload(path string, m *wm.Manager, keys *map[string]string, bindings *map[int]binding) bool {
+	cfg, src, err := config.Load(path)
+	if err != nil {
+		applog.Errorf("recarregar a config (%s): %v", src, err)
+		win.ErrorBox("minWinM", fmt.Sprintf("A configuração não foi recarregada (%s):\n\n%v", src, err))
+		return false
+	}
+	applog.Printf("recarregando a config %s", src)
+	unregisterBindings(*bindings)
+	next := registerBindings(cfg.Bindings)
+	if len(next) == 0 {
+		*bindings = registerBindings(*keys)
+		win.ErrorBox("minWinM", "Nenhum atalho do novo config.json foi registrado; "+
+			"a configuração anterior continua valendo.")
+		return false
+	}
+	*keys, *bindings = cfg.Bindings, next
+	if cfg.LogVerbose {
+		applog.SetVerbose(true)
+	}
+	m.Apply(cfg)
+	return true
+}
+
+func unregisterBindings(bindings map[int]binding) {
+	for id := range bindings {
+		win.UnregisterHotKey(id)
+	}
 }
 
 type binding struct {

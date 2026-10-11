@@ -14,6 +14,7 @@ var (
 	dwmapi = windows.NewLazySystemDLL("dwmapi.dll")
 
 	pRegisterHotKey                = user32.NewProc("RegisterHotKey")
+	pUnregisterHotKey              = user32.NewProc("UnregisterHotKey")
 	pGetMessage                    = user32.NewProc("GetMessageW")
 	pGetForegroundWindow           = user32.NewProc("GetForegroundWindow")
 	pSetWindowPos                  = user32.NewProc("SetWindowPos")
@@ -36,6 +37,7 @@ var (
 	pGetWindowLong       = user32.NewProc("GetWindowLongW")
 	pGetWindowTextLength = user32.NewProc("GetWindowTextLengthW")
 	pSetForegroundWindow = user32.NewProc("SetForegroundWindow")
+	pAllowSetForeground  = user32.NewProc("AllowSetForegroundWindow")
 	pBringWindowToTop    = user32.NewProc("BringWindowToTop")
 	pAttachThreadInput   = user32.NewProc("AttachThreadInput")
 	pGetCursorPos        = user32.NewProc("GetCursorPos")

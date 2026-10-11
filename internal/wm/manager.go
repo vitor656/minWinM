@@ -61,23 +61,52 @@ type savedPos struct {
 // chame Start depois.
 func New(cfg config.Config) *Manager {
 	m := &Manager{
-		enabled:      cfg.Tiling == nil || *cfg.Tiling,
-		gaps:         grid.Gaps{Inner: int32(max(0, cfg.Gap)), Outer: int32(max(0, cfg.Gap))},
-		outerFollows: cfg.OuterGap == nil,
-		step:         cfg.ResizeStep,
-		ignore:       map[string]bool{},
-		saved:        map[uintptr]savedPos{},
+		enabled: cfg.Tiling == nil || *cfg.Tiling,
+		saved:   map[uintptr]savedPos{},
 	}
+	m.settings(cfg)
+	return m
+}
+
+// settings copia da config o que pode mudar com o programa rodando: gaps,
+// passo do redimensionamento e lista ignore.
+func (m *Manager) settings(cfg config.Config) {
+	m.gaps = grid.Gaps{Inner: int32(max(0, cfg.Gap)), Outer: int32(max(0, cfg.Gap))}
+	m.outerFollows = cfg.OuterGap == nil
 	if cfg.OuterGap != nil {
 		m.gaps.Outer = int32(max(0, *cfg.OuterGap))
 	}
+	m.step = cfg.ResizeStep
 	if m.step <= 0 {
 		m.step = 0.05
 	}
+	m.ignore = map[string]bool{}
 	for _, s := range cfg.Ignore {
 		m.ignore[strings.ToLower(s)] = true
 	}
-	return m
+}
+
+// Apply troca a config com o programa rodando (recarregar pelo menu do
+// ícone): janelas que passaram a ser ignoradas saem do grid e o grid é
+// refeito com os novos gaps. Não liga nem desliga o tiling — "tiling" é só o
+// estado inicial.
+func (m *Manager) Apply(cfg config.Config) {
+	m.settings(cfg)
+	for _, ws := range m.spaces {
+		kept := ws.tiles[:0]
+		for _, tl := range ws.tiles {
+			if m.ignored(tl.hwnd) {
+				m.logf("saiu do grid (ignore): %s", tl.name())
+				continue
+			}
+			kept = append(kept, tl)
+		}
+		ws.tiles = kept
+	}
+	m.logf("config recarregada: gap %d (bordas %d), %d ignorados", m.gaps.Inner, m.gaps.Outer, len(m.ignore))
+	if m.enabled {
+		m.retile()
+	}
 }
 
 // Start instala os hooks de eventos e, com o tiling ligado, monta o grid

@@ -48,6 +48,11 @@ func RegisterHotKey(id int, mods, vk uint32, repeat bool) error {
 	return nil
 }
 
+// UnregisterHotKey desfaz um RegisterHotKey da thread atual.
+func UnregisterHotKey(id int) {
+	pUnregisterHotKey.Call(0, uintptr(id))
+}
+
 // SetTimer cria um timer de thread (WM_TIMER chega no GetMessage com hwnd 0).
 func SetTimer(ms uint32) uintptr {
 	id, _, _ := pSetTimer.Call(0, 0, uintptr(ms), 0)

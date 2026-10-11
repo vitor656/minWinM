@@ -108,8 +108,14 @@ powershell -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\Programs\minWinM\uni
   `^` para a barra.
 - **Fechar:** `Ctrl+Alt+Q` ou *Sair* no menu do ícone.
 - **Abrir de novo:** menu Iniciar → *minWinM*.
-- **Mudar atalhos:** edite `%LOCALAPPDATA%\Programs\minWinM\config.json` e
-  reabra o minWinM (`Ctrl+Alt+Q` e abrir pelo menu Iniciar).
+- **Mudar atalhos:** *Editar atalhos (config.json)* no menu do ícone abre o
+  `%LOCALAPPDATA%\Programs\minWinM\config.json` (se não existir, é criado com
+  o padrão; sem programa associado a `.json`, abre no Bloco de Notas). Depois
+  de salvar, **Recarregar config** no mesmo menu (habilitado quando o arquivo
+  mudou) troca os atalhos e refaz o grid com os novos `gap`, `outer_gap`,
+  `resize_step` e `ignore`, sem reiniciar. `tiling` e `tray_icon` só valem ao
+  abrir o minWinM. Se o arquivo estiver inválido, um aviso mostra o erro e a
+  configuração atual continua valendo.
 - **Receber atalhos novos depois de atualizar:** o instalador nunca
   sobrescreve o seu `config.json`. Para trocá-lo pelo padrão atual, rode o
   `scripts\install.ps1` com `-ResetConfig` (o antigo fica em

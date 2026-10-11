@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 )
 
 //go:embed config.json
@@ -39,8 +40,7 @@ func Load(path string) (Config, string, error) {
 		data, err = os.ReadFile(path)
 		src = path
 	default:
-		if exe, e := os.Executable(); e == nil {
-			p := filepath.Join(filepath.Dir(exe), "config.json")
+		if p := UserPath(""); p != "" {
 			if d, e := os.ReadFile(p); e == nil {
 				data, src = d, p
 			}
@@ -53,6 +53,47 @@ func Load(path string) (Config, string, error) {
 		return Config{}, src, err
 	}
 	return parse(data, src)
+}
+
+// UserPath é o arquivo de configuração que o usuário edita, exista ou não: o
+// caminho dado (flag -config) ou config.json ao lado do executável. Vazio, se
+// não der para saber onde está o executável.
+func UserPath(path string) string {
+	if path != "" {
+		return path
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(filepath.Dir(exe), "config.json")
+}
+
+// EnsureFile cria o arquivo com a configuração padrão se ele ainda não
+// existir (nunca sobrescreve), para o usuário ter o que editar. Diz se criou.
+func EnsureFile(path string) (bool, error) {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if os.IsExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if _, err := f.Write(defaultConfig); err != nil {
+		f.Close()
+		return true, err
+	}
+	return true, f.Close()
+}
+
+// ModTime é a data de modificação do arquivo (zero se não existe), para
+// saber se ele mudou depois de lido.
+func ModTime(path string) time.Time {
+	st, err := os.Stat(path)
+	if err != nil {
+		return time.Time{}
+	}
+	return st.ModTime()
 }
 
 func parse(data []byte, src string) (Config, string, error) {

@@ -46,11 +46,13 @@ func (m *Manager) tileable(hwnd uintptr) bool {
 	if !isAppWindow(hwnd) || win.Style(hwnd)&win.StyleThickFrame == 0 {
 		return false
 	}
-	if len(m.ignore) > 0 &&
-		(m.ignore[strings.ToLower(win.ClassName(hwnd))] || m.ignore[strings.ToLower(win.ProcessName(hwnd))]) {
-		return false
-	}
-	return true
+	return !m.ignored(hwnd)
+}
+
+// ignored diz se a classe ou o executável da janela está na lista ignore.
+func (m *Manager) ignored(hwnd uintptr) bool {
+	return len(m.ignore) > 0 &&
+		(m.ignore[strings.ToLower(win.ClassName(hwnd))] || m.ignore[strings.ToLower(win.ProcessName(hwnd))])
 }
 
 // occupies diz se o tile ocupa um slot do grid agora: minimizadas, em outra

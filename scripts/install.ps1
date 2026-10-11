@@ -83,7 +83,17 @@ param(
         }
 
         New-Item -ItemType Directory -Force $dest | Out-Null
-        Copy-Item (Join-Path $tmp 'minWinM.exe') $exe -Force
+        # O Windows pode segurar o .exe por um instante depois que o processo
+        # termina; tenta de novo antes de desistir.
+        for ($i = 1; ; $i++) {
+            try {
+                Copy-Item (Join-Path $tmp 'minWinM.exe') $exe -Force -ErrorAction Stop
+                break
+            } catch [System.IO.IOException] {
+                if ($i -ge 10) { throw }
+                Start-Sleep -Milliseconds 500
+            }
+        }
         Copy-Item (Join-Path $tmp 'uninstall.ps1') (Join-Path $dest 'uninstall.ps1') -Force
         Write-Host "Instalado em $dest"
 
@@ -154,6 +164,6 @@ param(
     Start-Process -FilePath $exe -WorkingDirectory $dest
     Write-Host ''
     Write-Host 'minWinM rodando em segundo plano. Para fechar: Ctrl+Alt+Q.'
-    Write-Host "Para mudar atalhos: edite $cfg e reabra o minWinM."
+    Write-Host "Para mudar atalhos: menu do ícone > Editar atalhos ($cfg) e depois Recarregar config."
     Write-Host 'Para desinstalar: Configurações > Aplicativos > Aplicativos instalados > minWinM.'
 }
