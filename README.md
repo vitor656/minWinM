@@ -184,7 +184,10 @@ As janelas ocupam o grid coluna a coluna, de cima para baixo.
   cada janela parte do tamanho que tinha (uma coluna fica com a largura das
   janelas que vão para ela, e cada janela com a sua altura relativa) e o grid
   se reajusta para fechar a tela. Uma janela nova recebe a média das vizinhas.
-  `Ctrl+Alt+B` (`balance`) volta tudo para tamanhos iguais.
+  `Ctrl+Alt+B` (`balance`) volta tudo para tamanhos iguais — exceto a área
+  de um [preset dockado](#posições-fixas-presets) ativo, que balance mantém
+  como está (ela é o valor do preset, não um redimensionamento manual para
+  desfazer); o resto é dividido em partes iguais ao redor dela.
 
 ---
 
@@ -250,10 +253,34 @@ segurada.
 
 ### Posições fixas (presets)
 
-Colocam a janela focada numa posição fixa da tela. Com o grid ligado, a janela
-sai do grid ("flutua") e o lugar dela fica reservado. **Repetir o mesmo atalho
-devolve a janela ao grid.** Com o grid desligado, repetir devolve a janela
-para onde ela estava antes.
+Colocam a janela focada numa posição fixa da tela.
+
+A maioria **encaixa no grid de verdade**: a janela ganha exatamente a área
+pedida (metade, terço, dois-terços, centralizada na largura ou quadrante) e
+as outras janelas do mesmo monitor se reajustam para preencher o resto, sem
+sobrepor. `left`, `right`, `left-third`, `center-third`, `right-third`,
+`left-two-thirds`, `right-two-thirds` e os 4 quadrantes (`top-left`,
+`top-right`, `bottom-left`, `bottom-right`) são assim — `center-third`, por
+estar no meio da tela em vez de encostada numa borda, divide o resto em duas
+colunas (antes e depois dela); se não há nenhuma janela de um dos lados,
+essa largura some e `center-third` absorve ela (vira uma meia-tela
+assimétrica em vez de deixar um vão vazio).
+
+`maximize` e `center` continuam como antes: a janela "flutua" por cima, o
+lugar dela no grid fica reservado, e as outras não se mexem — de propósito,
+já que cobrem a tela inteira ou ficam por cima das outras. `top` e `bottom`
+(metade de cima/baixo) também flutuam, mas por limitação: o grid só sabe
+dividir colunas e, dentro de cada coluna, linhas — não existe uma linha que
+atravesse várias colunas, então não tem como encaixar uma faixa que cobre a
+largura toda sem reescrever o jeito que o grid é guardado.
+
+**Repetir o mesmo atalho desfaz** (devolve ao arranjo de antes, encaixado ou
+flutuante). Trocar direto para outro preset na mesma janela funciona sem
+precisar desfazer primeiro. Um encaixe sobrevive a abrir, fechar ou
+minimizar *outra* janela do mesmo monitor (reencaixa com a nova quantidade);
+só desfaz de verdade se for a própria janela encaixada que sair do grid. Com
+o grid desligado, repetir qualquer preset devolve a janela para onde ela
+estava antes.
 
 | Atalho | Preset | | Atalho | Preset |
 |---|---|---|---|---|
@@ -326,6 +353,9 @@ com as que já estavam lá. A largura das colunas é mantida.
 `Alt+Shift+G` de novo na mesma janela volta ao arranjo de antes (ordem e
 proporções). Abrir, fechar ou minimizar uma janela naquele monitor também
 volta ao grid automático.
+
+Disputa o mesmo "encaixe" que um [preset de borda](#posições-fixas-presets):
+aplicar um desfaz o outro, sempre voltando ao arranjo de antes do primeiro.
 
 ### Grid desligado
 

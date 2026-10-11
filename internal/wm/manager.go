@@ -364,8 +364,11 @@ func (m *Manager) LogState() {
 		m.logf("  grid do monitor %#x, área %v%s: formato %v", ws.mon, ws.desk, cur, ws.Shape())
 		for _, tl := range ws.tiles {
 			var flags []string
-			if tl.floating {
+			switch {
+			case tl.floating:
 				flags = append(flags, "flutuante:"+tl.preset)
+			case tl.preset != "":
+				flags = append(flags, "dockado:"+tl.preset)
 			}
 			if tl.tall {
 				flags = append(flags, "altura-total")

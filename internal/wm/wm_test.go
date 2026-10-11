@@ -95,6 +95,55 @@ func TestFullHeight(t *testing.T) {
 	}
 }
 
+func TestTallBlockedByPin(t *testing.T) {
+	ws := &workspace{}
+	ws.Fit(4) // formato [2,2]
+	slots := []*tile{{hwnd: 1}, {hwnd: 2}, {hwnd: 3}, {hwnd: 4}}
+	ws.pin = pinState{tile: slots[0], name: "left"}
+	if !ws.tallBlockedByPin(slots, 0) || !ws.tallBlockedByPin(slots, 1) {
+		t.Fatal("coluna do preset dockado devia bloquear toggle-full-height")
+	}
+	if ws.tallBlockedByPin(slots, 2) || ws.tallBlockedByPin(slots, 3) {
+		t.Fatal("coluna vizinha não devia ser bloqueada")
+	}
+	if c, ok := ws.dockedColumn(slots); !ok || c != 0 {
+		t.Fatalf("dockedColumn = %d, %v; want 0, true", c, ok)
+	}
+	ws.pin.name = "" // encaixe de solo-column não tem largura "do preset"
+	if _, ok := ws.dockedColumn(slots); ok {
+		t.Fatal("name vazio (solo-column) não devia contar como dockedColumn")
+	}
+	if ws.tallBlockedByPin(slots, 0) {
+		t.Fatal("name vazio (solo-column) não devia bloquear")
+	}
+}
+
+func TestTakeoverPin(t *testing.T) {
+	ws := &workspace{}
+	ws.Fit(2) // formato automático, ainda não customizado
+	a := &tile{hwnd: 1, preset: "left"}
+	b := &tile{hwnd: 2}
+	ws.tiles = []*tile{a, b}
+
+	ws.takeoverPin(a)
+	if ws.pin.tile != a || len(ws.pin.tiles) != 2 {
+		t.Fatalf("primeiro encaixe não guardou o bookmark: %+v", ws.pin)
+	}
+	bookmark := ws.pin.tiles
+
+	ws.SetShape([]int{1, 1}) // simula o SetShape/SetLayout de quem chama
+	ws.takeoverPin(b)        // encaixe em cima de encaixe: troca de dono
+	if ws.pin.tile != b {
+		t.Fatalf("pin.tile não trocou para b: %+v", ws.pin.tile)
+	}
+	if a.preset != "" {
+		t.Fatalf("preset do dono antigo (a) devia ter sido limpo, ficou %q", a.preset)
+	}
+	if len(ws.pin.tiles) != len(bookmark) || &ws.pin.tiles[0] != &bookmark[0] {
+		t.Fatal("bookmark do primeiro encaixe foi sobrescrito (devia persistir)")
+	}
+}
+
 func TestNewDefaults(t *testing.T) {
 	gap, outer := 6, 2
 	m := New(config.Config{Gap: gap, OuterGap: &outer, ResizeStep: -1, Ignore: []string{"Foo.EXE"}})

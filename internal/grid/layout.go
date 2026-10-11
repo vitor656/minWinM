@@ -23,25 +23,40 @@ func Shape(n int) []int {
 	return shape
 }
 
+// columnsOf devolve, para cada coluna do formato, os slots antigos dela de
+// cima para baixo.
+func columnsOf(shape []int) [][]int {
+	cols := make([][]int, len(shape))
+	s := 0
+	for i, n := range shape {
+		for r := 0; r < n; r++ {
+			cols[i] = append(cols[i], s)
+			s++
+		}
+	}
+	return cols
+}
+
+// colOf devolve a coluna do slot no formato, ou -1 se não existe.
+func colOf(shape []int, slot int) int {
+	s := 0
+	for i, n := range shape {
+		if slot < s+n {
+			return i
+		}
+		s += n
+	}
+	return -1
+}
+
 // SoloColumn deixa o slot sozinho na coluna dele e passa as outras janelas
 // da coluna para a coluna vizinha (a da direita; na última coluna, a da
 // esquerda), empilhadas junto com as que já estavam lá. Devolve o novo
 // formato e a nova ordem: order[i] é o slot antigo que vai para o slot i.
 // ok é false se não há o que fazer (slot já sozinho ou sem vizinha).
 func SoloColumn(shape []int, slot int) (newShape, order []int, ok bool) {
-	// cols[c] = slots antigos da coluna c, de cima para baixo.
-	cols := make([][]int, len(shape))
-	s := 0
-	c := -1
-	for i, n := range shape {
-		for r := 0; r < n; r++ {
-			if s == slot {
-				c = i
-			}
-			cols[i] = append(cols[i], s)
-			s++
-		}
-	}
+	cols := columnsOf(shape)
+	c := colOf(shape, slot)
 	if c < 0 || len(cols[c]) < 2 || len(shape) < 2 {
 		return nil, nil, false
 	}
@@ -64,6 +79,175 @@ func SoloColumn(shape []int, slot int) (newShape, order []int, ok bool) {
 		order = append(order, col...)
 	}
 	return newShape, order, true
+}
+
+// dockable diz se f é uma área que o grid (colunas no topo, linhas só
+// dentro de cada coluna) consegue representar sem deixar sobreposição ou
+// buraco: uma coluna inteira em qualquer X (metade, terço, dois-terços ou
+// centralizada, tipo "center-third") ou um quadrante encostado nos dois
+// eixos. "center" (não é coluna inteira nem está encostada) e "maximize"/
+// "top"/"bottom" (ocupariam uma linha atravessando todas as colunas, o
+// grid não representa isso) não são.
+func dockable(f Frac) bool {
+	if f.W >= 1-eps {
+		return false
+	}
+	if f.H > 1-eps {
+		return true
+	}
+	onX := f.X < eps || f.X+f.W > 1-eps
+	onY := f.Y < eps || f.Y+f.H > 1-eps
+	return onX && onY
+}
+
+// dockCol é uma coluna montada por Dock: largura, os slots antigos que
+// ficam nela (de cima pra baixo) e as linhas deles (nil = iguais).
+type dockCol struct {
+	w     float64
+	rows  []float64
+	slots []int
+}
+
+// assembleDock monta shape/colW/rowW/order a partir de colunas da esquerda
+// pra direita (mesma convenção de order que SoloColumn: order[i] é o slot
+// antigo que vai para o slot novo i).
+func assembleDock(cols []dockCol) (shape []int, colW []float64, rowW [][]float64, order []int) {
+	for _, c := range cols {
+		shape = append(shape, len(c.slots))
+		colW = append(colW, c.w)
+		rows := c.rows
+		if rows == nil {
+			rows = equalParts(len(c.slots))
+		}
+		rowW = append(rowW, rows)
+		order = append(order, c.slots...)
+	}
+	return
+}
+
+// Dock dá ao slot a área f (ver dockable) e devolve o novo formato e as
+// novas proporções para que as outras janelas que ocupam slot agora
+// preencham o resto da tela sem sobrepor. ok é false se f não é
+// encaixável; quem chama cai de volta pro overlay flutuante de sempre.
+func Dock(shape []int, slot int, f Frac) (newShape []int, colW []float64, rowW [][]float64, order []int, ok bool) {
+	if !dockable(f) {
+		return nil, nil, nil, nil, false
+	}
+	total := sum(shape)
+	if slot < 0 || slot >= total {
+		return nil, nil, nil, nil, false
+	}
+	var rest []int
+	for s := 0; s < total; s++ {
+		if s != slot {
+			rest = append(rest, s)
+		}
+	}
+	if len(rest) == 0 { // janela sozinha: nada pra arrumar
+		newShape, colW, rowW, order = assembleDock([]dockCol{{w: 1, slots: []int{slot}}})
+		return newShape, colW, rowW, order, true
+	}
+
+	if f.H > 1-eps { // coluna inteira: left/right/terço/dois-terços/centralizada
+		own := dockCol{w: f.W, slots: []int{slot}}
+		leftAnchored, rightAnchored := f.X < eps, f.X+f.W > 1-eps
+		switch {
+		case leftAnchored:
+			newShape, colW, rowW, order = assembleDock([]dockCol{own, {w: 1 - f.W, slots: rest}})
+		case rightAnchored:
+			newShape, colW, rowW, order = assembleDock([]dockCol{{w: 1 - f.W, slots: rest}, own})
+		default:
+			// Centralizada (ex.: center-third): divide o resto pela coluna
+			// original (não pelo número do slot — um colega empilhado na
+			// MESMA coluna, acima ou abaixo, não é "da esquerda" só por ter
+			// um índice menor; fica do lado "depois", por convenção). Se um
+			// dos lados fica vazio, a largura dele some com a do preset —
+			// sem isso haveria um vão sem nenhuma janela.
+			sc := colOf(shape, slot)
+			var before, after []int
+			for _, s := range rest {
+				if colOf(shape, s) < sc {
+					before = append(before, s)
+				} else {
+					after = append(after, s)
+				}
+			}
+			switch {
+			case len(before) == 0:
+				own.w = f.X + f.W
+				newShape, colW, rowW, order = assembleDock([]dockCol{own, {w: 1 - own.w, slots: after}})
+			case len(after) == 0:
+				own.w = 1 - f.X
+				newShape, colW, rowW, order = assembleDock([]dockCol{{w: 1 - own.w, slots: before}, own})
+			default:
+				newShape, colW, rowW, order = assembleDock([]dockCol{
+					{w: f.X, slots: before},
+					own,
+					{w: 1 - f.X - f.W, slots: after},
+				})
+			}
+		}
+		return newShape, colW, rowW, order, true
+	}
+
+	// Quadrante: a coluna do slot fica com ele + os colegas da coluna
+	// original (empresta 1 dos demais se não havia nenhum), a oposta leva
+	// o resto.
+	leftAnchored := f.X < eps
+	c := colOf(shape, slot)
+	var mates []int
+	for _, s := range columnsOf(shape)[c] {
+		if s != slot {
+			mates = append(mates, s)
+		}
+	}
+	var others []int
+	for _, s := range rest {
+		keep := true
+		for _, m := range mates {
+			if m == s {
+				keep = false
+			}
+		}
+		if keep {
+			others = append(others, s)
+		}
+	}
+	if len(mates) == 0 {
+		mates, others = others[:1], others[1:]
+	}
+	if len(others) == 0 { // só 2 janelas no total: não dá pra fazer 4 partes
+		own := dockCol{w: f.W, slots: []int{slot}}
+		if leftAnchored {
+			newShape, colW, rowW, order = assembleDock([]dockCol{own, {w: 1 - f.W, slots: mates}})
+		} else {
+			newShape, colW, rowW, order = assembleDock([]dockCol{{w: 1 - f.W, slots: mates}, own})
+		}
+		return newShape, colW, rowW, order, true
+	}
+
+	topAnchored := f.Y < eps
+	mateRows := equalParts(len(mates))
+	for i := range mateRows {
+		mateRows[i] *= 1 - f.H
+	}
+	var ownSlots []int
+	var rows []float64
+	if topAnchored {
+		ownSlots = append([]int{slot}, mates...)
+		rows = append([]float64{f.H}, mateRows...)
+	} else {
+		ownSlots = append(append([]int(nil), mates...), slot)
+		rows = append(mateRows, f.H)
+	}
+	own := dockCol{w: f.W, rows: rows, slots: ownSlots}
+	other := dockCol{w: 1 - f.W, slots: others}
+	if leftAnchored {
+		newShape, colW, rowW, order = assembleDock([]dockCol{own, other})
+	} else {
+		newShape, colW, rowW, order = assembleDock([]dockCol{other, own})
+	}
+	return newShape, colW, rowW, order, true
 }
 
 // Layout é o grid de um monitor: quantas janelas há em cada coluna e as
@@ -210,6 +394,17 @@ func (l *Layout) SetShape(shape []int) {
 	}
 }
 
+// SetLayout é SetShape, mas com colW/rowW já calculados (ex.: por Dock) em
+// vez de reiniciar tudo igual.
+func (l *Layout) SetLayout(shape []int, colW []float64, rowW [][]float64) {
+	l.shape, l.custom = append([]int(nil), shape...), true
+	l.colW = append([]float64(nil), colW...)
+	l.rowW = make([][]float64, len(rowW))
+	for c, r := range rowW {
+		l.rowW[c] = append([]float64(nil), r...)
+	}
+}
+
 // ClearShape volta ao formato automático no próximo Fit.
 func (l *Layout) ClearShape() { l.shape, l.custom = nil, false }
 
@@ -229,6 +424,33 @@ func (l *Layout) Reset() {
 	for c, n := range l.shape {
 		l.rowW[c] = equalParts(n)
 	}
+}
+
+// ResetExcept é Reset, mas mantém a largura e as linhas da coluna keep como
+// estão — usada por "balance" pra não desfazer a largura de um preset
+// dockado (ela é o valor do preset, não um redimensionamento manual pra
+// desfazer). O resto da largura (1 - a da coluna keep) é dividida em partes
+// iguais entre as outras colunas.
+func (l *Layout) ResetExcept(keep int) {
+	if keep < 0 || keep >= len(l.shape) {
+		l.Reset()
+		return
+	}
+	keptW, keptRows := l.colW[keep], l.rowW[keep]
+	others := equalParts(len(l.shape) - 1)
+	colW := make([]float64, len(l.shape))
+	rowW := make([][]float64, len(l.shape))
+	j := 0
+	for c, n := range l.shape {
+		if c == keep {
+			colW[c], rowW[c] = keptW, keptRows
+			continue
+		}
+		colW[c] = others[j] * (1 - keptW)
+		rowW[c] = equalParts(n)
+		j++
+	}
+	l.colW, l.rowW = colW, rowW
 }
 
 // Cell devolve a fração do monitor ocupada pelo slot i.

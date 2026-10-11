@@ -255,6 +255,124 @@ func TestSoloColumn(t *testing.T) {
 	}
 }
 
+func TestDock(t *testing.T) {
+	equalRowW := func(a, b [][]float64) bool {
+		if len(a) != len(b) {
+			return false
+		}
+		for i := range a {
+			if !equalFloats(a[i], b[i]) {
+				return false
+			}
+		}
+		return true
+	}
+	left, _ := Preset("left")
+	right, _ := Preset("right")
+	leftThird, _ := Preset("left-third")
+	rightTwoThirds, _ := Preset("right-two-thirds")
+	topLeft, _ := Preset("top-left")
+	bottomLeft, _ := Preset("bottom-left")
+	centerThird, _ := Preset("center-third")
+
+	cases := []struct {
+		name      string
+		shape     []int
+		slot      int
+		f         Frac
+		wantShape []int
+		wantColW  []float64
+		wantRowW  [][]float64
+		wantOrder []int
+	}{
+		{"left, 2x2 no slot 0", []int{2, 2}, 0, left,
+			[]int{1, 3}, []float64{0.5, 0.5}, [][]float64{{1}, {1.0 / 3, 1.0 / 3, 1.0 / 3}}, []int{0, 1, 2, 3}},
+		{"right, 2x2 no slot 0", []int{2, 2}, 0, right,
+			[]int{3, 1}, []float64{0.5, 0.5}, [][]float64{{1.0 / 3, 1.0 / 3, 1.0 / 3}, {1}}, []int{1, 2, 3, 0}},
+		{"left-third mantém a largura do preset", []int{2, 2}, 0, leftThird,
+			[]int{1, 3}, []float64{1.0 / 3, 2.0 / 3}, [][]float64{{1}, {1.0 / 3, 1.0 / 3, 1.0 / 3}}, []int{0, 1, 2, 3}},
+		{"right-two-thirds mantém a largura do preset", []int{2, 2}, 0, rightTwoThirds,
+			[]int{3, 1}, []float64{1.0 / 3, 2.0 / 3}, [][]float64{{1.0 / 3, 1.0 / 3, 1.0 / 3}, {1}}, []int{1, 2, 3, 0}},
+		{"top-left com colega de coluna (2x2 já simétrico, idêntico)", []int{2, 2}, 0, topLeft,
+			[]int{2, 2}, []float64{0.5, 0.5}, [][]float64{{0.5, 0.5}, {0.5, 0.5}}, []int{0, 1, 2, 3}},
+		{"bottom-left: âncora fica embaixo, colega sobe", []int{2, 2}, 1, bottomLeft,
+			[]int{2, 2}, []float64{0.5, 0.5}, [][]float64{{0.5, 0.5}, {0.5, 0.5}}, []int{0, 1, 2, 3}},
+		{"top-left empresta colega (coluna sozinha antes)", []int{1, 2}, 0, topLeft,
+			[]int{2, 1}, []float64{0.5, 0.5}, [][]float64{{0.5, 0.5}, {1}}, []int{0, 1, 2}},
+		{"top-left degenera pra meia-tela com só 2 janelas", []int{1, 1}, 0, topLeft,
+			[]int{1, 1}, []float64{0.5, 0.5}, [][]float64{{1}, {1}}, []int{0, 1}},
+		{"janela sozinha: nada pra arrumar", []int{1}, 0, left,
+			[]int{1}, []float64{1}, [][]float64{{1}}, []int{0}},
+		{"center-third divide em 3 (antes, preset, depois)", []int{1, 1, 1}, 1, centerThird,
+			[]int{1, 1, 1}, []float64{1.0 / 3, 1.0 / 3, 1.0 / 3}, [][]float64{{1}, {1}, {1}}, []int{0, 1, 2}},
+		{"center-third sem nada antes: absorve a largura vazia", []int{1, 1}, 0, centerThird,
+			[]int{1, 1}, []float64{2.0 / 3, 1.0 / 3}, [][]float64{{1}, {1}}, []int{0, 1}},
+		{"center-third sem nada depois: absorve a largura vazia", []int{1, 1}, 1, centerThird,
+			[]int{1, 1}, []float64{1.0 / 3, 2.0 / 3}, [][]float64{{1}, {1}}, []int{0, 1}},
+		// Coluna 1 tem 2 janelas empilhadas (slots 1 e 2); aplicando em slot
+		// 2, a 1 (colega de coluna, acima) tem índice MENOR mas não é "da
+		// esquerda" — tem que ir para o lado "depois", com a 3 (coluna 2).
+		{"center-third não confunde colega empilhada com janela à esquerda", []int{1, 2, 1}, 2, centerThird,
+			[]int{1, 1, 2}, []float64{1.0 / 3, 1.0 / 3, 1.0 / 3}, [][]float64{{1}, {1}, {0.5, 0.5}}, []int{0, 2, 1, 3}},
+	}
+	for _, c := range cases {
+		shape, colW, rowW, order, ok := Dock(c.shape, c.slot, c.f)
+		if !ok {
+			t.Errorf("%s: Dock(%v, %d, %v) ok=false, want true", c.name, c.shape, c.slot, c.f)
+			continue
+		}
+		if !equalInts(shape, c.wantShape) || !equalFloats(colW, c.wantColW) ||
+			!equalRowW(rowW, c.wantRowW) || !equalInts(order, c.wantOrder) {
+			t.Errorf("%s: Dock(%v, %d, %v) = %v %v %v %v, want %v %v %v %v",
+				c.name, c.shape, c.slot, c.f, shape, colW, rowW, order,
+				c.wantShape, c.wantColW, c.wantRowW, c.wantOrder)
+		}
+	}
+
+	for _, name := range []string{"top", "bottom", "maximize", "center"} {
+		f, _ := Preset(name)
+		if _, _, _, _, ok := Dock([]int{2, 2}, 0, f); ok {
+			t.Errorf("Dock com preset %q (não encostado numa borda) devolveu ok=true", name)
+		}
+	}
+}
+
+func TestSetLayout(t *testing.T) {
+	var l Layout
+	l.SetLayout([]int{1, 2}, []float64{0.4, 0.6}, [][]float64{{1}, {0.3, 0.7}})
+	if !l.Custom() || !equalInts(l.Shape(), []int{1, 2}) {
+		t.Fatalf("SetLayout não fixou o formato: %v custom=%v", l.Shape(), l.Custom())
+	}
+	if f := l.Cell(0); f != (Frac{0, 0, 0.4, 1}) {
+		t.Fatalf("Cell(0) = %+v", f)
+	}
+	if f := l.Cell(2); f != (Frac{0.4, 0.3, 0.6, 0.7}) {
+		t.Fatalf("Cell(2) = %+v", f)
+	}
+}
+
+func TestResetExcept(t *testing.T) {
+	var l Layout
+	l.SetLayout([]int{1, 2, 1}, []float64{0.2, 0.3, 0.5}, [][]float64{{1}, {0.4, 0.6}, {1}})
+	l.ResetExcept(0)
+	if !equalFloats(l.colW, []float64{0.2, 0.4, 0.4}) {
+		t.Fatalf("colW = %v, want a coluna 0 intacta e o resto (0.8) dividido igual", l.colW)
+	}
+	if !equalFloats(l.rowW[0], []float64{1}) {
+		t.Fatalf("linhas da coluna mantida mudaram: %v", l.rowW[0])
+	}
+	if !equalFloats(l.rowW[1], []float64{0.5, 0.5}) {
+		t.Fatalf("linhas da coluna 1 não foram igualadas: %v", l.rowW[1])
+	}
+
+	// Índice fora do formato cai no Reset normal (iguala tudo).
+	l.SetLayout([]int{1, 1}, []float64{0.2, 0.8}, [][]float64{{1}, {1}})
+	l.ResetExcept(9)
+	if !equalFloats(l.colW, []float64{0.5, 0.5}) {
+		t.Fatalf("ResetExcept com índice inválido devia igualar tudo: %v", l.colW)
+	}
+}
+
 func TestSetShapeLastsWhileCountSame(t *testing.T) {
 	var l Layout
 	l.Fit(4)

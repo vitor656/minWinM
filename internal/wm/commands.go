@@ -239,7 +239,7 @@ func (m *Manager) swapManual(hwnd uintptr, d grid.Dir) {
 // fechado, sem deixar nenhuma janela transbordar (ver applySizes).
 func (m *Manager) resize(hwnd uintptr, horizontal bool, delta float64) {
 	ws, i := m.find(hwnd)
-	if !m.enabled || ws == nil {
+	if !m.enabled || ws == nil || ws.tiles[i].floating {
 		return
 	}
 	mon, ok := win.MonitorInfo(ws.mon)
@@ -255,12 +255,24 @@ func (m *Manager) resize(hwnd uintptr, horizontal bool, delta float64) {
 	m.applySizes(ws, mon, before, ws.Snapshot())
 }
 
-// balance volta as proporções do grid da janela para iguais.
+// balance volta as proporções do grid da janela para iguais. Preserva a
+// largura (e as linhas) da coluna de um preset dockado: balance desfaz
+// redimensionamento manual, não é pra desfazer o próprio preset.
 func (m *Manager) balance(hwnd uintptr) {
-	if ws, _ := m.find(hwnd); ws != nil {
-		ws.Reset()
-		m.layout(ws)
+	ws, _ := m.find(hwnd)
+	if !m.enabled || ws == nil {
+		return
 	}
+	mon, ok := win.MonitorInfo(ws.mon)
+	if !ok {
+		return
+	}
+	if c, ok := ws.dockedColumn(ws.slots(mon)); ok {
+		ws.ResetExcept(c)
+	} else {
+		ws.Reset()
+	}
+	m.layout(ws)
 }
 
 // --- janela --------------------------------------------------------------
@@ -283,10 +295,15 @@ func (m *Manager) toggleFullHeight(hwnd uintptr) {
 		return
 	}
 	slots := ws.slots(mon)
-	if s := slotOf(slots, tl); s >= 0 {
-		for _, sib := range ws.sameColumn(slots, s) {
-			sib.tall = false
-		}
+	s := slotOf(slots, tl)
+	if s < 0 {
+		return
+	}
+	if ws.tallBlockedByPin(slots, s) {
+		return // a coluna pertence a um preset dockado; não sobrepõe
+	}
+	for _, sib := range ws.sameColumn(slots, s) {
+		sib.tall = false
 	}
 	tl.tall = true
 	m.layout(ws)
@@ -295,7 +312,9 @@ func (m *Manager) toggleFullHeight(hwnd uintptr) {
 // toggleSoloColumn deixa a janela sozinha na coluna dela, em altura total,
 // e empurra as outras da coluna para a coluna vizinha (o grid se refaz, sem
 // janelas atrás de outras). De novo, volta ao arranjo de antes; abrir ou
-// fechar uma janela também volta ao formato automático.
+// fechar uma janela também volta ao formato automático. Disputa o mesmo
+// encaixe customizado que um preset dockado (ver preset) — aplicar um
+// desfaz o outro.
 func (m *Manager) toggleSoloColumn(hwnd uintptr) {
 	ws, i := m.find(hwnd)
 	if !m.enabled || ws == nil || ws.tiles[i].floating {
@@ -307,8 +326,9 @@ func (m *Manager) toggleSoloColumn(hwnd uintptr) {
 	}
 	tl := ws.tiles[i]
 	slots := ws.slots(mon)
-	if ws.Custom() && ws.solo.tile == tl {
-		ws.unsolo(mon)
+	if ws.Custom() && ws.pin.tile == tl {
+		tl.preset = ""
+		ws.unpin(mon)
 		m.layout(ws)
 		return
 	}
@@ -317,28 +337,12 @@ func (m *Manager) toggleSoloColumn(hwnd uintptr) {
 	if !ok {
 		return
 	}
-	if !ws.Custom() { // solo em cima de solo volta ao arranjo do primeiro
-		ws.solo = soloState{tiles: append([]*tile(nil), ws.tiles...), sizes: ws.Snapshot()}
-	}
-	ws.solo.tile = tl
+	ws.takeoverPin(tl)
+	ws.pin.name = ""
 	for _, sib := range ws.sameColumn(slots, s) {
 		sib.tall = false // a coluna passa a ser só dela
 	}
-
-	// Reordena só os tiles que ocupam slot; minimizados ficam onde estão.
-	occupied := map[*tile]bool{}
-	for _, o := range slots {
-		occupied[o] = true
-	}
-	var pos []int
-	for j, o := range ws.tiles {
-		if occupied[o] {
-			pos = append(pos, j)
-		}
-	}
-	for k, o := range order {
-		ws.tiles[pos[k]] = slots[o]
-	}
+	ws.reorder(slots, order)
 	ws.SetShape(shape)
 	m.layout(ws)
 }
@@ -358,12 +362,59 @@ func (m *Manager) toggleCenter(hwnd uintptr) {
 	m.preset(hwnd, "center")
 }
 
-// preset aplica um preset fixo. Repetir o mesmo preset desfaz: com tiling a
-// janela volta ao slot do grid (que ficou reservado); sem tiling (ou numa
-// janela fora do grid), volta para a posição de antes do primeiro preset.
+// preset aplica um preset fixo. Presets encaixáveis (ver grid.Dock: metade,
+// terço, dois-terços, centralizado como center-third, ou quadrante) encaixam
+// no grid de verdade: a janela ganha a área pedida e as outras se reajustam
+// pro resto da tela, sem sobrepor (disputam o mesmo encaixe que
+// toggle-solo-column — aplicar um desfaz o outro). Os demais (center,
+// maximize, e top/bottom por limitação do grid) continuam como overlay
+// flutuante: a janela ganha uma posição fixa e o slot que tinha fica
+// reservado, sem reajustar as outras.
+//
+// Repetir o mesmo preset desfaz: com tiling, a janela volta ao arranjo de
+// antes (automático, ou do encaixe anterior); sem tiling (ou numa janela
+// fora do grid), volta para a posição de antes do primeiro preset.
 func (m *Manager) preset(hwnd uintptr, name string) {
 	if ws, i := m.find(hwnd); m.enabled && ws != nil {
 		tl := ws.tiles[i]
+		mon, ok := win.MonitorInfo(ws.mon)
+		if !ok {
+			return
+		}
+
+		// Repetir o mesmo encaixe desfaz.
+		if ws.Custom() && ws.pin.tile == tl && ws.pin.name == name {
+			tl.preset = ""
+			ws.unpin(mon)
+			m.layout(ws)
+			return
+		}
+
+		slots := ws.slots(mon)
+		s := slotOf(slots, tl)
+		if s < 0 {
+			return
+		}
+		f, _ := grid.Preset(name)
+		if newShape, colW, rowW, order, ok := grid.Dock(ws.Shape(), s, f); ok {
+			for _, sib := range ws.sameColumn(slots, s) {
+				sib.tall = false // a coluna do preset passa a ser dele
+			}
+			tl.floating = false // vinha de um overlay (center/maximize): limpa
+			ws.takeoverPin(tl)
+			ws.reorder(slots, order)
+			ws.SetLayout(newShape, colW, rowW)
+			ws.pin.name, tl.preset = name, name
+			m.layout(ws)
+			return
+		}
+
+		// Não encaixável (center/maximize/top/bottom): se a janela estava
+		// dockada, desfaz o dock antes de flutuar por cima.
+		if ws.Custom() && ws.pin.tile == tl {
+			tl.preset = ""
+			ws.unpin(mon)
+		}
 		if tl.floating && tl.preset == name {
 			tl.floating, tl.preset = false, ""
 			m.layout(ws)
