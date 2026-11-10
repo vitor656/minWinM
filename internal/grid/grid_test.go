@@ -449,3 +449,56 @@ func TestNormalizeRespectsMinPart(t *testing.T) {
 		t.Fatalf("soma %v != 1: %v", total, got)
 	}
 }
+
+func TestInside(t *testing.T) {
+	mon := Rect{0, 0, 1000, 800}
+	cases := []struct {
+		name    string
+		r, want Rect
+	}{
+		{"já dentro", Rect{10, 10, 500, 400}, Rect{10, 10, 500, 400}},
+		{"passa à direita", Rect{700, 0, 1100, 400}, Rect{600, 0, 1000, 400}},
+		{"passa embaixo", Rect{0, 600, 400, 900}, Rect{0, 500, 400, 800}},
+		{"passa à esquerda e em cima", Rect{-50, -20, 200, 100}, Rect{0, 0, 250, 120}},
+		{"maior que a área encosta no começo", Rect{300, 0, 1500, 400}, Rect{0, 0, 1200, 400}},
+	}
+	for _, c := range cases {
+		if got := Inside(c.r, mon); got != c.want {
+			t.Errorf("%s: Inside = %v, want %v", c.name, got, c.want)
+		}
+	}
+	// Monitor à direita do principal (coordenadas positivas deslocadas).
+	second := Rect{1000, 0, 2000, 800}
+	if got := Inside(Rect{1700, 0, 2300, 400}, second); got != (Rect{1400, 0, 2000, 400}) {
+		t.Errorf("segundo monitor: Inside = %v", got)
+	}
+}
+
+func TestEntryIndex(t *testing.T) {
+	// Monitor da direita (x 1000..2000) com grid 2 colunas: A à esquerda
+	// inteira, B e C empilhadas à direita (ordem do grid: A, B, C).
+	a := Rect{1000, 0, 1500, 1000}
+	b := Rect{1500, 0, 2000, 500}
+	c := Rect{1500, 500, 2000, 1000}
+	all := []Rect{a, b, c}
+	from := Rect{500, 0, 1000, 1000} // coluna da direita do monitor da esquerda
+	if got := EntryIndex(from, all, Right); got != 0 {
+		t.Errorf("entrando pela esquerda = %d, want 0 (lugar de A)", got)
+	}
+	// Vindo de um monitor à direita (x > 2000), entra depois da coluna mais
+	// próxima — a da direita; a mais próxima em Y de um retângulo em cima é B.
+	fromRight := Rect{2000, 0, 2500, 500}
+	if got := EntryIndex(fromRight, all, Left); got != 2 {
+		t.Errorf("entrando pela direita = %d, want 2 (depois de B)", got)
+	}
+	if got := EntryIndex(from, nil, Right); got != 0 {
+		t.Errorf("grid vazio, direita = %d, want 0", got)
+	}
+	if got := EntryIndex(fromRight, nil, Left); got != 0 {
+		t.Errorf("grid vazio, esquerda = %d, want 0", got)
+	}
+	// Nada na direção: Left/Up vai para o fim.
+	if got := EntryIndex(Rect{0, 0, 10, 10}, all, Left); got != 3 {
+		t.Errorf("sem vizinho à esquerda = %d, want 3", got)
+	}
+}

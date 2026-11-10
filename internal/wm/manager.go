@@ -290,7 +290,7 @@ func (m *Manager) layout(ws *workspace) {
 		if tl.floating || win.IsHung(tl.hwnd) || tl.hwnd == m.drag.hwnd {
 			continue
 		}
-		win.Place(tl.hwnd, ws.slotRect(mon, slots, i, m.gaps))
+		placeInside(tl.hwnd, ws.slotRect(mon, slots, i, m.gaps), mon.Work)
 	}
 }
 

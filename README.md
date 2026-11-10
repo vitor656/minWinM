@@ -201,8 +201,31 @@ As direções seguem o Vim: **h** = esquerda, **j** = baixo, **k** = cima,
 | Atalho | Ação | O que faz |
 |---|---|---|
 | `Alt` + `h` `j` `k` `l` | `focus-*` | Foca a janela vizinha naquela direção (atravessa monitores) |
-| `Alt` + `Shift` + `h` `j` `k` `l` | `move-*` | Troca a janela focada de lugar com a vizinha. Na borda da tela, leva a janela para o monitor ao lado |
-| `Ctrl` + `Alt` + `Shift` + `→` / `←` | `next-monitor` / `prev-monitor` | Manda a janela para o grid do próximo / anterior monitor |
+| `Alt` + `Shift` + `h` `j` `k` `l` | `move-*` | Troca a janela focada de lugar com a vizinha. Na borda da tela, leva a janela para o monitor naquela direção ([detalhes](#vários-monitores)) |
+| `Ctrl` + `Alt` + `Shift` + `→` / `←` | `next-monitor` / `prev-monitor` | Manda a janela para o fim do grid do próximo / anterior monitor (da esquerda para a direita, dando a volta) |
+
+#### Vários monitores
+
+Cada monitor tem seu grid, e as janelas ficam sempre dentro do monitor delas:
+presets e encaixes usam a área útil daquele monitor, e uma janela que não
+encolhe até o tamanho do slot (tamanho mínimo do app) pode cobrir a vizinha,
+mas é empurrada de volta para dentro em vez de atravessar para o monitor ao
+lado.
+
+`move-*` sem vizinha naquela direção leva a janela para o monitor que fica
+para aquele lado (à esquerda, à direita, em cima ou embaixo):
+
+- **Com o grid ligado**, ela entra no grid de lá **pelo lado de onde veio**:
+  vindo da esquerda, toma o lugar da janela mais próxima da borda esquerda
+  (que anda uma posição); vindo da direita, entra logo depois dela. O
+  encaixe de um preset dockado e a altura total ficam para trás (eram do
+  grid antigo), e o grid de origem se refaz sem ela.
+- **Janela flutuante** (`center`, `maximize`, `top`, `bottom`) não troca de
+  lugar com ninguém: vai direto para o monitor naquela direção, no mesmo
+  preset.
+- **Com o grid desligado** (ou numa janela que não entra no grid), troca de
+  lugar com a vizinha do mesmo monitor; na borda, vai para o monitor ao lado
+  mantendo posição e tamanho relativos (ou o mesmo preset, se estiver num).
 
 ### Áreas de trabalho virtuais
 

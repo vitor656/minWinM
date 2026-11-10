@@ -107,25 +107,52 @@ func (m *Manager) centeredHome(hwnd uintptr) (grid.Rect, bool) {
 }
 
 // move troca a janela de lugar com a vizinha na direção d; na borda do
-// monitor, leva a janela para o grid do monitor vizinho. Com o tiling
-// desligado, só troca a posição das duas janelas.
+// monitor (sem vizinha naquela direção), leva a janela para o monitor ao
+// lado — no grid dele, entrando pelo lado de onde veio. Uma janela
+// flutuante (center, maximize, top, bottom) não troca de lugar com
+// ninguém: vai direto para o monitor vizinho, no mesmo preset. Com o tiling
+// desligado, ou numa janela fora do grid, ver moveFree.
 func (m *Manager) move(hwnd uintptr, d grid.Dir) {
-	if !m.enabled {
-		m.swapManual(hwnd, d)
-		return
-	}
 	ws, i := m.find(hwnd)
-	if ws == nil || ws.tiles[i].floating {
+	if !m.enabled || ws == nil {
+		m.moveFree(hwnd, d)
 		return
 	}
+	tl := ws.tiles[i]
 	from, ok := win.FrameBounds(hwnd)
 	if !ok {
 		return
 	}
+	if !tl.floating {
+		idx, rects := placedTiles(ws, tl)
+		if k := grid.Neighbor(from, rects, d); k >= 0 {
+			j := idx[k]
+			ws.tiles[i], ws.tiles[j] = ws.tiles[j], ws.tiles[i]
+			m.layout(ws)
+			return
+		}
+	}
+	next, ok := neighborMonitor(ws.mon, d)
+	if !ok {
+		return
+	}
+	target := m.spaceFor(next.Handle, ws.desk)
+	idx, rects := placedTiles(target, nil)
+	at := len(target.tiles)
+	if k := grid.EntryIndex(from, rects, d); k < len(idx) {
+		at = idx[k]
+	}
+	m.transfer(ws, i, target, at)
+}
+
+// placedTiles devolve as posições (em ws.tiles) e os retângulos visíveis
+// dos tiles posicionados no grid agora — sem flutuantes, minimizados,
+// ocultos e except —, na ordem do grid.
+func placedTiles(ws *workspace, except *tile) ([]int, []grid.Rect) {
 	var idx []int
 	var rects []grid.Rect
 	for j, tl := range ws.tiles {
-		if j == i || tl.floating || win.IsIconic(tl.hwnd) || win.IsCloaked(tl.hwnd) {
+		if tl == except || tl.floating || win.IsIconic(tl.hwnd) || win.IsCloaked(tl.hwnd) {
 			continue
 		}
 		if r, ok := win.FrameBounds(tl.hwnd); ok {
@@ -133,82 +160,135 @@ func (m *Manager) move(hwnd uintptr, d grid.Dir) {
 			rects = append(rects, r)
 		}
 	}
-	if k := grid.Neighbor(from, rects, d); k >= 0 {
-		j := idx[k]
-		ws.tiles[i], ws.tiles[j] = ws.tiles[j], ws.tiles[i]
-		m.layout(ws)
-		return
-	}
-
-	cur, _ := win.MonitorInfo(ws.mon)
-	var mrects []grid.Rect
-	var handles []uintptr
-	for _, mon := range win.Monitors() {
-		if mon.Handle != ws.mon {
-			mrects = append(mrects, mon.Full)
-			handles = append(handles, mon.Handle)
-		}
-	}
-	if k := grid.Neighbor(cur.Full, mrects, d); k >= 0 {
-		// Entra pelo lado de onde veio.
-		m.transfer(ws, i, m.spaceFor(handles[k], ws.desk), d == grid.Left || d == grid.Up)
-	}
+	return idx, rects
 }
 
-// transfer move o tile i de ws para o grid target (no fim ou no começo).
-func (m *Manager) transfer(ws *workspace, i int, target *workspace, atEnd bool) {
+// neighborMonitor devolve o monitor vizinho de cur na direção d.
+func neighborMonitor(cur uintptr, d grid.Dir) (win.Monitor, bool) {
+	from, ok := win.MonitorInfo(cur)
+	if !ok {
+		return win.Monitor{}, false
+	}
+	var mons []win.Monitor
+	var rects []grid.Rect
+	for _, mon := range win.Monitors() {
+		if mon.Handle != cur {
+			mons = append(mons, mon)
+			rects = append(rects, mon.Full)
+		}
+	}
+	if k := grid.Neighbor(from.Full, rects, d); k >= 0 {
+		return mons[k], true
+	}
+	return win.Monitor{}, false
+}
+
+// transfer move o tile i de ws para o grid target, na posição at da lista
+// (len(target.tiles) = no fim). O que era do lugar antigo fica para trás: o
+// encaixe customizado (preset dockado ou solo-column) de que ela era a
+// âncora e a altura total, que no outro monitor cobriria janelas que não
+// estavam empilhadas com ela. Uma janela flutuante continua no mesmo
+// preset, agora no monitor novo.
+func (m *Manager) transfer(ws *workspace, i int, target *workspace, at int) {
 	if target == nil || target == ws {
 		return
 	}
 	tl := ws.tiles[i]
 	ws.tiles = append(ws.tiles[:i], ws.tiles[i+1:]...)
-	if atEnd {
-		target.tiles = append(target.tiles, tl)
-	} else {
-		target.tiles = append([]*tile{tl}, target.tiles...)
-	}
+	ws.release(tl)
+	tl.tall = false
+	tl.frac = grid.Frac{} // o tamanho era do outro monitor: entra como janela nova
+	at = min(max(at, 0), len(target.tiles))
+	target.tiles = append(target.tiles[:at], append([]*tile{tl}, target.tiles[at:]...)...)
+	m.logf("mudou de monitor: %s (%#x → %#x)", tl.name(), ws.mon, target.mon)
 	m.layout(ws)
 	m.layout(target)
+	if tl.floating {
+		if mon, ok := win.MonitorInfo(target.mon); ok {
+			m.placePreset(tl.hwnd, tl.preset, mon)
+		}
+	}
 }
 
 // moveToMonitor implementa next/prev-monitor: com o tiling ligado leva a
-// janela para o grid do monitor vizinho; desligado, mantém posição e
-// tamanho relativos.
+// janela para o fim do grid do próximo/anterior monitor (da esquerda para a
+// direita, dando a volta); desligado, mantém posição e tamanho relativos.
 func (m *Manager) moveToMonitor(hwnd uintptr, step int) {
-	if ws, i := m.find(hwnd); m.enabled && ws != nil {
-		if spaces := m.current(); len(spaces) >= 2 {
-			k := 0
-			for j, s := range spaces {
-				if s == ws {
-					k = j
-				}
-			}
-			m.transfer(ws, i, spaces[(k+step+len(spaces))%len(spaces)], true)
-			return
-		}
-	}
-	moveKeepingPosition(hwnd, step)
-}
-
-// moveKeepingPosition leva a janela para o monitor vizinho mantendo a
-// posição e o tamanho relativos à área útil.
-func moveKeepingPosition(hwnd uintptr, step int) {
 	mons := win.Monitors()
 	if len(mons) < 2 {
+		return
+	}
+	cur := 0
+	if mon, ok := win.MonitorOf(hwnd); ok {
+		for j, o := range mons {
+			if o.Handle == mon.Handle {
+				cur = j
+			}
+		}
+	}
+	if ws, i := m.find(hwnd); m.enabled && ws != nil {
+		for j, o := range mons {
+			if o.Handle == ws.mon {
+				cur = j
+			}
+		}
+		target := m.spaceFor(mons[(cur+step+len(mons))%len(mons)].Handle, ws.desk)
+		m.transfer(ws, i, target, len(target.tiles))
+		return
+	}
+	m.moveKeepingPosition(hwnd, mons[(cur+step+len(mons))%len(mons)])
+}
+
+// moveFree é o move-* com o tiling desligado ou numa janela fora do grid.
+// Desligado, troca a janela de lugar com a vizinha do mesmo monitor; sem
+// vizinha (ou fora do grid, com o tiling ligado — não troca com uma janela
+// do grid), leva a janela para o monitor naquela direção, mantendo posição
+// e tamanho relativos.
+func (m *Manager) moveFree(hwnd uintptr, d grid.Dir) {
+	from, ok := win.FrameBounds(hwnd)
+	if !ok {
 		return
 	}
 	cur, ok := win.MonitorOf(hwnd)
 	if !ok {
 		return
 	}
-	idx := 0
-	for i, mon := range mons {
-		if mon.Handle == cur.Handle {
-			idx = i
+	if !m.enabled {
+		var hs []uintptr
+		var rects []grid.Rect
+		cands, all := appWindows(hwnd)
+		for k, h := range cands {
+			if mon, ok := win.MonitorOf(h); ok && mon.Handle == cur.Handle {
+				hs = append(hs, h)
+				rects = append(rects, all[k])
+			}
+		}
+		if k := grid.Neighbor(from, rects, d); k >= 0 {
+			win.Place(hwnd, rects[k])
+			win.Place(hs[k], from)
+			return
 		}
 	}
-	next := mons[(idx+step+len(mons))%len(mons)]
+	if next, ok := neighborMonitor(cur.Handle, d); ok {
+		m.moveKeepingPosition(hwnd, next)
+	}
+}
 
+// moveKeepingPosition leva a janela para o monitor next mantendo a posição e
+// o tamanho relativos à área útil. Uma janela num preset do modo manual vai
+// para o mesmo preset no outro monitor, e o lugar para onde ela volta ao
+// desfazer o preset também passa para lá.
+func (m *Manager) moveKeepingPosition(hwnd uintptr, next win.Monitor) {
+	cur, ok := win.MonitorOf(hwnd)
+	if !ok || cur.Handle == next.Handle {
+		return
+	}
+	if s, ok := m.saved[hwnd]; ok {
+		s.r = grid.TileRect(next.Work, grid.RelativeFrac(s.r, cur.Work), grid.Gaps{})
+		m.saved[hwnd] = s
+		m.placePreset(hwnd, s.preset, next)
+		return
+	}
 	vis, ok := win.FrameBounds(hwnd)
 	if !ok {
 		if vis, ok = win.WindowRect(hwnd); !ok {
@@ -216,19 +296,21 @@ func moveKeepingPosition(hwnd uintptr, step int) {
 		}
 	}
 	f := grid.RelativeFrac(vis, cur.Work)
-	win.Place(hwnd, grid.TileRect(next.Work, f, grid.Gaps{}))
+	placeInside(hwnd, grid.TileRect(next.Work, f, grid.Gaps{}), next.Work)
 }
 
-// swapManual, com o tiling desligado, troca a posição de duas janelas.
-func (m *Manager) swapManual(hwnd uintptr, d grid.Dir) {
-	from, ok := win.FrameBounds(hwnd)
+// placeInside posiciona a janela em r e, se ela não encolher até lá
+// (tamanho mínimo do app) e passar da área útil do monitor, desliza de volta
+// para dentro dela: pode cobrir a vizinha, mas não atravessa para o monitor
+// ao lado nem fica atrás da barra de tarefas.
+func placeInside(hwnd uintptr, r, work grid.Rect) {
+	win.Place(hwnd, r)
+	got, ok := win.FrameBounds(hwnd)
 	if !ok {
 		return
 	}
-	cands, rects := appWindows(hwnd)
-	if k := grid.Neighbor(from, rects, d); k >= 0 {
-		win.Place(hwnd, rects[k])
-		win.Place(cands[k], from)
+	if in := grid.Inside(got, work); in != got {
+		win.Place(hwnd, in)
 	}
 }
 
@@ -421,7 +503,7 @@ func (m *Manager) preset(hwnd uintptr, name string) {
 			return
 		}
 		tl.floating, tl.preset = true, name
-		m.placePreset(hwnd, name)
+		m.placePreset(hwnd, name, mon) // no monitor do grid, não onde a janela está
 		return
 	}
 	for h := range m.saved { // esquece janelas que já fecharam
@@ -440,20 +522,18 @@ func (m *Manager) preset(hwnd uintptr, name string) {
 			return
 		}
 	}
-	s.preset = name
-	m.saved[hwnd] = s
-	m.placePreset(hwnd, name)
-}
-
-// placePreset posiciona a janela na área do preset, no monitor onde ela está.
-func (m *Manager) placePreset(hwnd uintptr, name string) {
-	f, ok := grid.Preset(name)
-	if !ok {
-		return
-	}
 	mon, ok := win.MonitorOf(hwnd)
 	if !ok {
 		return
 	}
-	win.Place(hwnd, grid.TileRect(mon.Work, f, m.gaps))
+	s.preset = name
+	m.saved[hwnd] = s
+	m.placePreset(hwnd, name, mon)
+}
+
+// placePreset posiciona a janela na área do preset dentro do monitor mon.
+func (m *Manager) placePreset(hwnd uintptr, name string, mon win.Monitor) {
+	if f, ok := grid.Preset(name); ok {
+		placeInside(hwnd, grid.TileRect(mon.Work, f, m.gaps), mon.Work)
+	}
 }

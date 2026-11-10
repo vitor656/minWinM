@@ -82,9 +82,7 @@ func (m *Manager) dropped(hwnd uintptr) {
 		}
 	}
 	if target := m.spaceFor(win.MonitorAt(p), ws.desk); target != ws {
-		tl := ws.tiles[i]
-		ws.tiles = append(ws.tiles[:i], ws.tiles[i+1:]...)
-		target.tiles = append(target.tiles, tl)
+		m.transfer(ws, i, target, len(target.tiles))
 	}
 }
 

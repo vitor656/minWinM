@@ -74,3 +74,23 @@ func RelativeFrac(r, wa Rect) Frac {
 		H: float64(r.H()) / h,
 	}
 }
+
+// Inside desloca r, sem mudar o tamanho, para dentro de b. Num eixo em que r
+// é maior que b, encosta no começo (esquerda/topo). Usado quando o app não
+// encolhe até o slot (tamanho mínimo): a janela cobre a vizinha, mas não
+// atravessa para o monitor ao lado.
+func Inside(r, b Rect) Rect {
+	shift := func(lo, hi, blo, bhi int32) int32 {
+		d := int32(0)
+		if hi > bhi {
+			d = bhi - hi
+		}
+		if lo+d < blo {
+			d = blo - lo
+		}
+		return d
+	}
+	dx := shift(r.Left, r.Right, b.Left, b.Right)
+	dy := shift(r.Top, r.Bottom, b.Top, b.Bottom)
+	return Rect{r.Left + dx, r.Top + dy, r.Right + dx, r.Bottom + dy}
+}

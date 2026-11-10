@@ -73,6 +73,20 @@ func (ws *workspace) takeoverPin(tl *tile) {
 	ws.pin.tile = tl
 }
 
+// release desfaz o que prende tl a este grid, quando ela sai dele (outro
+// monitor): se era a âncora do encaixe customizado, o grid volta ao formato
+// automático; e um preset dockado não vale fora do grid onde foi encaixado.
+// O preset de uma janela flutuante continua (ela flutua no grid novo).
+func (ws *workspace) release(tl *tile) {
+	if ws.pin.tile == tl {
+		ws.pin = pinState{}
+		ws.ClearShape()
+	}
+	if !tl.floating {
+		tl.preset = ""
+	}
+}
+
 // reorder aplica a nova ordem (devolvida por grid.SoloColumn ou grid.Dock)
 // aos tiles que ocupam slot agora; os que não ocupam (minimizados etc.)
 // ficam onde estão.
